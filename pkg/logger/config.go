@@ -1,5 +1,7 @@
 package logger
 
+import "path/filepath"
+
 // A LogConf is a logging config.
 type LogConf struct {
 	// ServiceName represents the service name.
@@ -44,4 +46,31 @@ type LogConf struct {
 	Rotation string `yaml:"Rotation" default:"daily"`
 	// FileTimeFormat represents the time format for file name, default is `2006-01-02T15:04:05.000Z07:00`.
 	FileTimeFormat string `yaml:"FileTimeFormat" default:"2006-01-02T15:04:05.000Z07:00"`
+
+	// Legacy fields kept for backward compatibility with older ppanel.yaml files.
+	FilePath  string `yaml:"FilePath" default:""`
+	MaxBackup int    `yaml:"MaxBackup" default:"0"`
+	MaxAge    int    `yaml:"MaxAge" default:"0"`
+}
+
+func (c LogConf) normalize() LogConf {
+	if c.Path == "logs" && c.FilePath != "" {
+		dir := filepath.Dir(filepath.Clean(c.FilePath))
+		if dir == "" {
+			dir = "."
+		}
+		c.Path = dir
+	}
+
+	if c.MaxBackups == 0 && c.MaxBackup > 0 {
+		c.MaxBackups = c.MaxBackup
+	}
+	if c.KeepDays == 0 && c.MaxAge > 0 {
+		c.KeepDays = c.MaxAge
+	}
+	if c.FilePath != "" && c.Rotation == "daily" && (c.MaxSize > 0 || c.MaxBackup > 0) {
+		c.Rotation = "size"
+	}
+
+	return c
 }

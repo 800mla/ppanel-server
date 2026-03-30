@@ -278,6 +278,8 @@ func SetWriter(w Writer) {
 // We allow SetUp to be called multiple times, because, for example,
 // we need to allow different service frameworks to initialize logx respectively.
 func SetUp(c LogConf) (err error) {
+	c = c.normalize()
+
 	// Ignore the later SetUp calls.
 	// Because multiple services in one process might call SetUp respectively.
 	// Need to wait for the first caller to complete the execution.

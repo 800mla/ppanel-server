@@ -1,10 +1,13 @@
 package svc
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/oschwald/geoip2-golang"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -12,23 +15,18 @@ import (
 
 const GeoIPDBURL = "https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-City.mmdb"
 
+var geoIPHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
+
 type IPLocation struct {
 	Path string
 	DB   *geoip2.Reader
 }
 
 func NewIPLocation(path string) (*IPLocation, error) {
-
-	// 检查文件是否存在
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		logger.Infof("[GeoIP] Database not found, downloading from %s", GeoIPDBURL)
-		// 文件不存在，下载数据库
-		err := DownloadGeoIPDatabase(GeoIPDBURL, path)
-		if err != nil {
-			logger.Errorf("[GeoIP] Failed to download database: %v", err.Error())
-			return nil, err
-		}
-		logger.Infof("[GeoIP] Database downloaded successfully")
+	if err := ensureGeoIPDatabase(path); err != nil {
+		return nil, err
 	}
 
 	db, err := geoip2.Open(path)
@@ -45,30 +43,84 @@ func (ipLoc *IPLocation) Close() error {
 	return ipLoc.DB.Close()
 }
 
-func DownloadGeoIPDatabase(url, path string) error {
+func ensureGeoIPDatabase(path string) error {
+	db, err := geoip2.Open(path)
+	if err == nil {
+		return db.Close()
+	}
 
-	// 创建路径, 确保目录存在
-	err := os.MkdirAll(filepath.Dir(path), 0755)
-	if err != nil {
+	if _, statErr := os.Stat(path); statErr == nil {
+		logger.Errorf("[GeoIP] Existing database is invalid, recreating %s: %v", path, err)
+		if removeErr := os.Remove(path); removeErr != nil {
+			return fmt.Errorf("remove invalid GeoIP database %s: %w", path, removeErr)
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+
+	logger.Infof("[GeoIP] Database not found, downloading from %s", GeoIPDBURL)
+	if err := DownloadGeoIPDatabase(GeoIPDBURL, path); err != nil {
+		logger.Errorf("[GeoIP] Failed to download database: %v", err.Error())
+		return err
+	}
+	logger.Infof("[GeoIP] Database downloaded successfully")
+	return nil
+}
+
+func DownloadGeoIPDatabase(url, path string) error {
+	baseDir := filepath.Dir(path)
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		logger.Errorf("[GeoIP] Failed to create directory: %v", err.Error())
 		return err
 	}
 
-	// 创建文件
-	out, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// 请求远程文件
-	resp, err := http.Get(url)
+	resp, err := geoIPHTTPClient.Get(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code when downloading GeoIP database: %s", resp.Status)
+	}
 
-	// 保存文件
-	_, err = io.Copy(out, resp.Body)
-	return err
+	tmpFile, err := os.CreateTemp(baseDir, "GeoLite2-City-*.mmdb")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	keepTemp := false
+	defer func() {
+		_ = tmpFile.Close()
+		if !keepTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	written, err := io.Copy(tmpFile, resp.Body)
+	if err != nil {
+		return err
+	}
+	if written == 0 {
+		return errors.New("downloaded GeoIP database is empty")
+	}
+	if err := tmpFile.Sync(); err != nil {
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	db, err := geoip2.Open(tmpPath)
+	if err != nil {
+		return fmt.Errorf("validate GeoIP database %s: %w", tmpPath, err)
+	}
+	if err := db.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	keepTemp = true
+	return nil
 }

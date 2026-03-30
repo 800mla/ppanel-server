@@ -24,6 +24,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/traffic"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/limit"
+	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/nodeMultiplier"
 	"github.com/perfect-panel/server/pkg/orm"
 
@@ -81,7 +82,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	// IP location initialize
 	geoIP, err := NewIPLocation("./cache/GeoLite2-City.mmdb")
 	if err != nil {
-		panic(err.Error())
+		logger.Errorf("[GeoIP] Initialize failed, IP location lookup will be unavailable: %s", err.Error())
 	}
 
 	rds := redis.NewClient(&redis.Options{
@@ -101,8 +102,6 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	err = rds.Ping(context.Background()).Err()
 	if err != nil {
 		panic(err.Error())
-	} else {
-		_ = rds.FlushAll(context.Background()).Err()
 	}
 	authLimiter := limit.NewPeriodLimit(86400, 15, rds, config.SendCountLimitKeyPrefix, limit.Align())
 	srv := &ServiceContext{

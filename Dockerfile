@@ -36,6 +36,7 @@ ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 COPY --from=builder /app/ppanel /app/ppanel
+COPY --from=builder /build/cache /app/cache
 COPY --from=builder /build/etc /app/etc
 
 # Expose the port (optional)
