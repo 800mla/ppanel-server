@@ -14,9 +14,9 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	pkgaes "github.com/perfect-panel/server/pkg/aes"
 	"github.com/perfect-panel/server/pkg/constant"
+	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/result"
 	"github.com/perfect-panel/server/pkg/xerr"
-	"github.com/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,33 +28,26 @@ const (
 
 func DeviceMiddleware(srvCtx *svc.ServiceContext) func(c *gin.Context) {
 	return func(c *gin.Context) {
-
-		if !srvCtx.Config.Device.Enable {
+		loginType := bindLoginTypeToContext(c)
+		if !isDeviceRequest(c, loginType) {
 			c.Next()
 			return
 		}
 
-		if srvCtx.Config.Device.SecuritySecret == "" {
-			result.HttpResult(c, nil, errors.Wrapf(xerr.NewErrCode(xerr.SecretIsEmpty), "Secret is empty"))
+		if !srvCtx.DeviceAuthAvailable() {
+			reason := srvCtx.DeviceAuthDisabledReason()
+			logger.WithContext(c.Request.Context()).Errorw("[DeviceMiddleware] Device request rejected",
+				logger.Field("path", c.Request.URL.Path),
+				logger.Field("reason", reason),
+			)
+			result.HttpResult(c, nil, xerr.NewErrMsg(reason))
 			c.Abort()
-			return
-		}
-
-		ctx := c.Request.Context()
-		if ctx.Value(constant.CtxKeyUser) == nil && c.GetHeader("Login-Type") != "" {
-			ctx = context.WithValue(ctx, constant.CtxLoginType, c.GetHeader("Login-Type"))
-			c.Request = c.Request.WithContext(ctx)
-		}
-
-		loginType, ok := ctx.Value(constant.CtxLoginType).(string)
-		if !ok || loginType != "device" {
-			c.Next()
 			return
 		}
 
 		rw := NewResponseWriter(c, srvCtx)
 		if !rw.Decrypt() {
-			result.HttpResult(c, nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidCiphertext), "Invalid ciphertext"))
+			result.HttpResult(c, nil, xerr.NewErrCode(xerr.InvalidCiphertext))
 			c.Abort()
 			return
 		}
@@ -62,6 +55,33 @@ func DeviceMiddleware(srvCtx *svc.ServiceContext) func(c *gin.Context) {
 		c.Next()
 		rw.FlushAbort()
 	}
+}
+
+func bindLoginTypeToContext(c *gin.Context) string {
+	ctx := c.Request.Context()
+	if loginType, ok := ctx.Value(constant.CtxLoginType).(string); ok && loginType != "" {
+		return loginType
+	}
+
+	if header := c.GetHeader("Login-Type"); header != "" {
+		ctx = context.WithValue(ctx, constant.CtxLoginType, header)
+		c.Request = c.Request.WithContext(ctx)
+		return header
+	}
+
+	return ""
+}
+
+func isDeviceRequest(c *gin.Context, loginType string) bool {
+	if loginType == "device" {
+		return true
+	}
+
+	path := c.FullPath()
+	if path == "" {
+		path = c.Request.URL.Path
+	}
+	return path == "/v1/auth/login/device"
 }
 
 func NewResponseWriter(c *gin.Context, srvCtx *svc.ServiceContext) (rw *ResponseWriter) {
@@ -115,7 +135,6 @@ func (rw *ResponseWriter) Decrypt() bool {
 		return true
 	}
 
-	//判断url链接中是否存在data和iv数据，存在就进行解密并设置回去
 	query := rw.c.Request.URL.Query()
 	dataStr := query.Get("data")
 	timeStr := query.Get("time")
@@ -136,7 +155,6 @@ func (rw *ResponseWriter) Decrypt() bool {
 		}
 	}
 
-	//判断body是否存在数据，存在就尝试解密，并设置回去
 	body, err := io.ReadAll(rw.c.Request.Body)
 	if err != nil {
 		return true
@@ -258,7 +276,6 @@ func (rw *ResponseWriter) Written() bool {
 	return rw.size != noWritten
 }
 
-// Hijack implements the http.Hijacker interface.
 func (rw *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if rw.size < 0 {
 		rw.size = 0
@@ -266,13 +283,10 @@ func (rw *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return rw.ResponseWriter.(http.Hijacker).Hijack()
 }
 
-// CloseNotify implements the http.CloseNotifier interface.
 func (rw *ResponseWriter) CloseNotify() <-chan bool {
-	// 通过 r.Context().Done() 来监听请求的取消
 	done := rw.c.Request.Context().Done()
 	closed := make(chan bool)
 
-	// 当上下文被取消时，通过 closed channel 发送通知
 	go func() {
 		<-done
 		closed <- true
@@ -281,7 +295,6 @@ func (rw *ResponseWriter) CloseNotify() <-chan bool {
 	return closed
 }
 
-// Flush implements the http.Flusher interface.
 func (rw *ResponseWriter) Flush() {
 	rw.WriteHeaderNow()
 	rw.ResponseWriter.(http.Flusher).Flush()

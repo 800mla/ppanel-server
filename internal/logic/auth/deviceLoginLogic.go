@@ -35,8 +35,8 @@ func NewDeviceLoginLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Devic
 }
 
 func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *types.LoginResponse, err error) {
-	if !l.svcCtx.Config.Device.Enable {
-		return nil, xerr.NewErrMsg("Device login is disabled")
+	if !l.svcCtx.DeviceAuthAvailable() {
+		return nil, xerr.NewErrMsg(l.svcCtx.DeviceAuthDisabledReason())
 	}
 
 	loginStatus := false

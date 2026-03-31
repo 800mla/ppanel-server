@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/pkg/sms"
 )
 
@@ -18,4 +19,42 @@ func TestValidate(t *testing.T) {
 		t.Errorf("validateEmailPlatformConfig error: %v", err)
 	}
 	t.Logf("platformConfig: %+v", platformConfig)
+}
+
+func TestValidateDeviceAuthMethodConfig(t *testing.T) {
+	enabled := true
+	disabled := false
+
+	t.Run("reject enabling device auth without secret", func(t *testing.T) {
+		method := &auth.Auth{
+			Method:  "device",
+			Enabled: &enabled,
+			Config:  `{"enable_security":false,"only_real_device":true,"security_secret":"","show_ads":false}`,
+		}
+		if err := validateAuthMethodConfig(method); err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+	})
+
+	t.Run("allow disabled device auth without secret", func(t *testing.T) {
+		method := &auth.Auth{
+			Method:  "device",
+			Enabled: &disabled,
+			Config:  `{"enable_security":false,"only_real_device":true,"security_secret":"","show_ads":false}`,
+		}
+		if err := validateAuthMethodConfig(method); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("allow enabling device auth with secret", func(t *testing.T) {
+		method := &auth.Auth{
+			Method:  "device",
+			Enabled: &enabled,
+			Config:  `{"enable_security":true,"only_real_device":true,"security_secret":"test-secret","show_ads":false}`,
+		}
+		if err := validateAuthMethodConfig(method); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
 }

@@ -35,12 +35,13 @@ import (
 )
 
 type ServiceContext struct {
-	DB           *gorm.DB
-	Redis        *redis.Client
-	Config       config.Config
-	Queue        *asynq.Client
-	ExchangeRate float64
-	GeoIP        *IPLocation
+	DB                      *gorm.DB
+	Redis                   *redis.Client
+	Config                  config.Config
+	Queue                   *asynq.Client
+	ExchangeRate            float64
+	GeoIP                   *IPLocation
+	DeviceUnavailableReason string
 
 	//NodeCache   *cache.NodeCacheClient
 	AuthModel   auth.Model

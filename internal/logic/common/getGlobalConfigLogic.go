@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/perfect-panel/server/internal/report"
 	"github.com/perfect-panel/server/internal/svc"
@@ -51,6 +50,7 @@ func (l *GetGlobalConfigLogic) GetGlobalConfig() (resp *types.GetGlobalConfigRes
 	tool.DeepCopy(&resp.Subscribe, l.svcCtx.Config.Subscribe)
 	tool.DeepCopy(&resp.Auth.Email, l.svcCtx.Config.Email)
 	tool.DeepCopy(&resp.Auth.Mobile, l.svcCtx.Config.Mobile)
+	tool.DeepCopy(&resp.Auth.Device, l.svcCtx.Config.Device)
 	tool.DeepCopy(&resp.Auth.Register, l.svcCtx.Config.Register)
 	tool.DeepCopy(&resp.Invite, l.svcCtx.Config.Invite)
 	tool.SystemConfigSliceReflectToStruct(currencyCfg, &resp.Currency)
@@ -63,20 +63,24 @@ func (l *GetGlobalConfigLogic) GetGlobalConfig() (resp *types.GetGlobalConfigRes
 
 	var methods []string
 
-	// auth methods
 	authMethods, err := l.svcCtx.AuthModel.FindAll(l.ctx)
 	if err != nil {
 		l.Logger.Error("[GetGlobalConfigLogic] FindAll error: ", logger.Field("error", err.Error()))
 	}
 
 	for _, method := range authMethods {
-		if *method.Enabled {
-			methods = append(methods, method.Method)
-			if method.Method == "device" {
-				_ = json.Unmarshal([]byte(method.Config), &resp.Auth.Device)
-				resp.Auth.Device.Enable = true
-			}
+		if method.Enabled == nil || !*method.Enabled {
+			continue
 		}
+
+		if method.Method == "device" {
+			if l.svcCtx.Config.Device.Enable {
+				methods = append(methods, method.Method)
+			}
+			continue
+		}
+
+		methods = append(methods, method.Method)
 	}
 	resp.OAuthMethods = methods
 
@@ -85,7 +89,6 @@ func (l *GetGlobalConfigLogic) GetGlobalConfig() (resp *types.GetGlobalConfigRes
 		l.Logger.Error("[GetGlobalConfigLogic] FindOneByKey error: ", logger.Field("error", err.Error()), logger.Field("key", "WebAD"))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneByKey error: %v", err.Error())
 	}
-	// web ads config
 	resp.WebAd = webAds.Value == "true"
 	return
 }

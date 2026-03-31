@@ -3,6 +3,7 @@ package authMethod
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/perfect-panel/server/initialize"
 	"github.com/perfect-panel/server/internal/model/auth"
@@ -58,15 +59,28 @@ func (l *UpdateAuthMethodConfigLogic) UpdateAuthMethodConfig(req *types.UpdateAu
 			req.Config = mobileConfig
 		}
 
+		if req.Method == "device" {
+			configs, _ := json.Marshal(req.Config)
+			deviceConfig := new(auth.DeviceConfig)
+			if err := deviceConfig.Unmarshal(string(configs)); err != nil {
+				return nil, xerr.NewErrCodeMsg(xerr.InvalidParams, "device auth config is invalid")
+			}
+			req.Config = deviceConfig
+		}
+
 		bytes, err := json.Marshal(req.Config)
 		if err != nil {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "marshal config failed: %v", err.Error())
 		}
 		method.Config = string(bytes)
 	} else {
-		// initialize platform config
 		method.Config = initializePlatformConfig(req.Method).(string)
 	}
+
+	if err := validateAuthMethodConfig(method); err != nil {
+		return nil, err
+	}
+
 	err = l.svcCtx.AuthModel.Update(l.ctx, method)
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "update auth method failed: %v", err.Error())
@@ -80,7 +94,6 @@ func (l *UpdateAuthMethodConfigLogic) UpdateAuthMethodConfig(req *types.UpdateAu
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "unmarshal apple config failed: %v", err.Error())
 		}
 	}
-	// update global config
 	defer l.UpdateGlobal(method.Method)
 	return
 }
@@ -95,6 +108,24 @@ func (l *UpdateAuthMethodConfigLogic) UpdateGlobal(method string) {
 	if method == "device" {
 		initialize.Device(l.svcCtx)
 	}
+}
+
+func validateAuthMethodConfig(method *auth.Auth) error {
+	if method.Method != "device" {
+		return nil
+	}
+	if method.Enabled == nil || !*method.Enabled {
+		return nil
+	}
+
+	deviceConfig := new(auth.DeviceConfig)
+	if err := deviceConfig.Unmarshal(method.Config); err != nil {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, "device auth config is invalid")
+	}
+	if strings.TrimSpace(deviceConfig.SecuritySecret) == "" {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, "device security secret is required when enabling device auth")
+	}
+	return nil
 }
 
 func validatePlatformConfig(platform string, cfg map[string]interface{}) (interface{}, error) {
