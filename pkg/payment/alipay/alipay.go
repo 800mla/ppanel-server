@@ -61,7 +61,7 @@ func NewClient(c Config) *Client {
 }
 
 func (c *Client) PreCreateTrade(ctx context.Context, order Order) (string, error) {
-	amountString := tool.FormatFloat(float64(order.Amount)/float64(100), 2)
+	amountString := tool.FormatAmountFromCents(order.Amount)
 	trade, err := c.client.TradePreCreate(ctx, alipay.TradePreCreate{
 		Trade: alipay.Trade{
 			OutTradeNo:  order.OrderNo,

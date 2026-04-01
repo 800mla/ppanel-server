@@ -116,9 +116,10 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	}
 
 	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount = calculateFee(amount, paymentConfig)
+	finalAmount := amount
+	if finalAmount > 0 {
+		feeAmount = calculateFee(finalAmount, paymentConfig)
+		finalAmount += feeAmount
 	}
 	// create order
 	orderInfo := &order.Order{
@@ -126,7 +127,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		Type:           1,
 		Quantity:       req.Quantity,
 		Price:          price,
-		Amount:         amount,
+		Amount:         finalAmount,
 		Discount:       discountAmount,
 		GiftAmount:     0,
 		Coupon:         req.Coupon,

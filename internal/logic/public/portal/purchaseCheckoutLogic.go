@@ -3,6 +3,7 @@ package portal
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strconv"
 	"time"
 
@@ -180,18 +181,16 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 		NotifyURL:   notifyUrl,
 	})
 
-	// Convert order amount to CNY using current exchange rate
-	amount, err := l.queryExchangeRate("CNY", info.Amount)
+	amountCents, err := l.queryExchangeRateCents("CNY", info.Amount)
 	if err != nil {
 		l.Errorw("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryExchangeRate error: %s", err.Error())
 	}
-	convertAmount := int64(amount * 100) // Convert to cents for API
 
 	// Create pre-payment trade and generate QR code
 	QRCode, err := client.PreCreateTrade(l.ctx, alipay.Order{
 		OrderNo: info.OrderNo,
-		Amount:  convertAmount,
+		Amount:  amountCents,
 	})
 	if err != nil {
 		l.Errorw("[PurchaseCheckout] PreCreateTrade error", logger.Field("error", err.Error()))
@@ -218,19 +217,17 @@ func (l *PurchaseCheckoutLogic) stripePayment(config string, info *order.Order, 
 		WebhookSecret: stripeConfig.WebhookSecret,
 	})
 
-	// Convert order amount to CNY using current exchange rate
-	amount, err := l.queryExchangeRate("CNY", info.Amount)
+	amountCents, err := l.queryExchangeRateCents("CNY", info.Amount)
 	if err != nil {
 		l.Errorw("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryExchangeRate error: %s", err.Error())
 	}
-	convertAmount := int64(amount * 100) // Convert to cents for Stripe API
 
 	// Create Stripe payment sheet for client-side processing
 	result, err := client.CreatePaymentSheet(&stripe.Order{
 		OrderNo:   info.OrderNo,
 		Subscribe: strconv.FormatInt(info.SubscribeId, 10),
-		Amount:    convertAmount,
+		Amount:    amountCents,
 		Currency:  "cny",
 		Payment:   stripeConfig.Payment,
 	},
@@ -271,16 +268,10 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 	}
 	// Initialize EPay client with merchant credentials
 	client := epay.NewClient(epayConfig.Pid, epayConfig.Url, epayConfig.Key, epayConfig.Type)
-	var amount float64
-	if l.svcCtx.Config.Currency.Unit != "CNY" {
-		// Convert order amount to CNY using current exchange rate
-		amount, err = l.queryExchangeRate("CNY", info.Amount)
-		if err != nil {
-			l.Logger.Error("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
-			return "", err
-		}
-	} else {
-		amount = float64(info.Amount) / float64(100)
+	amountCents, err := l.queryExchangeRateCents("CNY", info.Amount)
+	if err != nil {
+		l.Logger.Error("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
+		return "", err
 	}
 
 	// gateway mod
@@ -309,7 +300,7 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 	// Create payment URL for user redirection
 	url := client.CreatePayUrl(epay.Order{
 		Name:      l.svcCtx.Config.Site.SiteName,
-		Amount:    amount,
+		Amount:    amountCents,
 		OrderNo:   info.OrderNo,
 		SignType:  "MD5",
 		NotifyUrl: notifyUrl,
@@ -331,16 +322,9 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 	// Initialize EPay client with merchant credentials
 	client := epay.NewClient(epayConfig.AccountID, epayConfig.Endpoint, epayConfig.SecretKey, epayConfig.Type)
 
-	var amount float64
-
-	if l.svcCtx.Config.Currency.Unit != "CNY" {
-		// Convert order amount to CNY using current exchange rate
-		amount, err = l.queryExchangeRate("CNY", info.Amount)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		amount = float64(info.Amount) / float64(100)
+	amountCents, err := l.queryExchangeRateCents("CNY", info.Amount)
+	if err != nil {
+		return "", err
 	}
 
 	// gateway mod
@@ -370,7 +354,7 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 	// Create payment URL for user redirection
 	url := client.CreatePayUrl(epay.Order{
 		Name:      l.svcCtx.Config.Site.SiteName,
-		Amount:    amount,
+		Amount:    amountCents,
 		OrderNo:   info.OrderNo,
 		SignType:  "MD5",
 		NotifyUrl: notifyUrl,
@@ -379,35 +363,27 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 	return url, nil
 }
 
-// queryExchangeRate converts the order amount from system currency to target currency
-// It retrieves the current exchange rate and performs currency conversion if needed
-func (l *PurchaseCheckoutLogic) queryExchangeRate(to string, src int64) (amount float64, err error) {
-	// Convert cents to decimal amount
-	amount = float64(src) / float64(100)
-
-	// No conversion needed if target currency matches system currency
+// queryExchangeRateCents converts an order amount from system currency cents to target currency cents.
+func (l *PurchaseCheckoutLogic) queryExchangeRateCents(to string, src int64) (int64, error) {
 	if to == l.svcCtx.Config.Currency.Unit {
-		return amount, nil
+		return src, nil
 	}
 
 	if l.svcCtx.ExchangeRate != 0 && to == "CNY" {
-		amount = amount * l.svcCtx.ExchangeRate
-		return amount, nil
+		return int64(math.Round(float64(src) * l.svcCtx.ExchangeRate)), nil
 	}
 
-	// Skip conversion if no exchange rate API key configured
 	if l.svcCtx.Config.Currency.AccessKey == "" {
-		return amount, nil
+		return src, nil
 	}
 
-	// Convert currency if system currency differs from target currency
 	result, err := exchangeRate.GetExchangeRete(l.svcCtx.Config.Currency.Unit, to, l.svcCtx.Config.Currency.AccessKey, 1)
 	if err != nil {
 		l.Logger.Error("[PurchaseCheckout] QueryExchangeRate error", logger.Field("error", err.Error()))
 		return 0, err
 	}
 	l.svcCtx.ExchangeRate = result
-	return result * amount, nil
+	return int64(math.Round(float64(src) * result)), nil
 }
 
 // balancePayment processes balance payment with gift amount priority logic

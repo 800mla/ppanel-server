@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 )
@@ -23,4 +24,14 @@ func FormatStringToFloat(str string) float64 {
 		return 0
 	}
 	return value
+}
+
+func FormatAmountFromCents(cents int64) string {
+	abs := cents
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		abs = -cents
+	}
+	return fmt.Sprintf("%s%d.%02d", sign, abs/100, abs%100)
 }
