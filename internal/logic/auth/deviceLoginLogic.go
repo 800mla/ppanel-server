@@ -8,6 +8,7 @@ import (
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/jwt"
@@ -190,6 +191,10 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 				logger.Field("error", err.Error()),
 			)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create device auth method failed: %v", err)
+		}
+
+		if err := promo.NewService(l.svcCtx).GrantSignupPromo(l.ctx, userInfo.Id, db); err != nil {
+			return err
 		}
 
 		// Insert device record

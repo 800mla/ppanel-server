@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -19,6 +20,7 @@ import (
 	"github.com/perfect-panel/server/pkg/payment/epay"
 
 	queueType "github.com/perfect-panel/server/queue/types"
+	"gorm.io/gorm"
 )
 
 type EPayNotifyLogic struct {
@@ -66,11 +68,15 @@ func (l *EPayNotifyLogic) EPayNotify(req *types.EPayNotifyRequest) error {
 		l.Logger.Error("[EPayNotify] Trade status is not success", logger.Field("orderNo", req.OutTradeNo), logger.Field("tradeStatus", req.TradeStatus))
 		return nil
 	}
-	if orderInfo.Status == 5 {
+	if orderInfo.Status == 2 || orderInfo.Status == 5 {
 		return nil
 	}
-	// Update order status
-	err = l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, req.OutTradeNo, 2)
+	err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+		if err := l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, req.OutTradeNo, 2, tx); err != nil {
+			return err
+		}
+		return promo.NewService(l.svcCtx).ConsumePromoByOrderID(l.ctx, orderInfo.Id, tx)
+	})
 	if err != nil {
 		l.Logger.Error("[EPayNotify] Update order status failed", logger.Field("error", err.Error()), logger.Field("orderNo", req.OutTradeNo))
 		return err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
@@ -57,6 +58,16 @@ func (l *UpdateOrderStatusLogic) UpdateOrderStatus(req *types.UpdateOrderStatusR
 		}
 		if err := l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, info.OrderNo, req.Status, db); err != nil {
 			return err
+		}
+		if req.Status == 2 {
+			if err := promo.NewService(l.svcCtx).ConsumePromoByOrderID(l.ctx, info.Id, db); err != nil {
+				return err
+			}
+		}
+		if req.Status == 3 || req.Status == 4 {
+			if err := promo.NewService(l.svcCtx).ReleaseReservationByOrderID(l.ctx, info.Id, db); err != nil {
+				return err
+			}
 		}
 		// If order status is 2, create user subscription
 		if req.Status == 2 {

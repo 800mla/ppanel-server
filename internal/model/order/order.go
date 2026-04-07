@@ -15,6 +15,8 @@ type Order struct {
 	Discount       int64     `gorm:"type:int;not null;default:0;comment:Discount Amount"`
 	Coupon         string    `gorm:"type:varchar(255);default:null;comment:Coupon"`
 	CouponDiscount int64     `gorm:"type:int;not null;default:0;comment:Coupon Discount Amount"`
+	PromoCampaignKey string  `gorm:"type:varchar(100);not null;default:'';comment:Promo Campaign Key"`
+	PromoDiscount    int64   `gorm:"type:int;not null;default:0;comment:Promo Discount Amount"`
 	Commission     int64     `gorm:"type:int;not null;default:0;comment:Order Commission"`
 	PaymentId      int64     `gorm:"type:bigint;not null;default:0;comment:Payment Method Id"`
 	Method         string    `gorm:"type:varchar(255);not null;default:'';comment:Payment Method"`

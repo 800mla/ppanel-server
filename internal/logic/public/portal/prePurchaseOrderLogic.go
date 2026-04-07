@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/tool"
 
 	"github.com/perfect-panel/server/internal/svc"
@@ -66,6 +67,18 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 		coupon = calculateCoupon(amount, couponInfo)
 	}
 	amount -= coupon
+	promoAmount := int64(0)
+	if previewUser, isNewSignup, err := resolvePortalPreviewUser(l.ctx, l.svcCtx, req.AuthType, req.Identifier, req.Password); err != nil {
+		return nil, err
+	} else if previewUser != nil {
+		promoAmount, err = promo.NewService(l.svcCtx).PreviewDiscountForUser(l.ctx, previewUser.Id, 1, amount)
+		if err != nil {
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find promo error: %v", err.Error())
+		}
+	} else if isNewSignup {
+		promoAmount = promo.NewService(l.svcCtx).PreviewDiscountForNewSignup(amount)
+	}
+	amount -= promoAmount
 	var feeAmount int64
 	if req.Payment != 0 {
 		payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
@@ -86,6 +99,7 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 		Discount:       discountAmount,
 		Coupon:         req.Coupon,
 		CouponDiscount: coupon,
+		PromoDiscount:  promoAmount,
 		FeeAmount:      feeAmount,
 	}
 	return

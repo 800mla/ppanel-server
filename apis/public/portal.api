@@ -36,6 +36,9 @@ type (
 		SubscribeId int64  `json:"subscribe_id"`
 		Quantity    int64  `json:"quantity"`
 		Coupon      string `json:"coupon,omitempty"`
+		AuthType    string `json:"auth_type,omitempty"`
+		Identifier  string `json:"identifier,omitempty"`
+		Password    string `json:"password,omitempty"`
 	}
 	PrePurchaseOrderResponse {
 		Price          int64  `json:"price"`
@@ -43,6 +46,7 @@ type (
 		Discount       int64  `json:"discount"`
 		Coupon         string `json:"coupon"`
 		CouponDiscount int64  `json:"coupon_discount"`
+		PromoDiscount  int64  `json:"promo_discount"`
 		FeeAmount      int64  `json:"fee_amount"`
 	}
 	QueryPurchaseOrderRequest {
@@ -59,6 +63,8 @@ type (
 		Discount       int64         `json:"discount"`
 		Coupon         string        `json:"coupon"`
 		CouponDiscount int64         `json:"coupon_discount"`
+		PromoCampaignKey string      `json:"promo_campaign_key"`
+		PromoDiscount    int64       `json:"promo_discount"`
 		FeeAmount      int64         `json:"fee_amount"`
 		Payment        PaymentMethod `json:"payment"`
 		Status         uint8         `json:"status"`
@@ -97,4 +103,3 @@ service ppanel {
 	@handler PurchaseCheckout
 	post /order/checkout (CheckoutOrderRequest) returns (CheckoutOrderResponse)
 }
-

@@ -934,6 +934,9 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		// Query User Info
 		publicUserGroupRouter.GET("/info", publicUser.QueryUserInfoHandler(serverCtx))
 
+		// Dismiss User Promo
+		publicUserGroupRouter.PUT("/promo/dismiss", publicUser.DismissUserPromoHandler(serverCtx))
+
 		// Get Login Log
 		publicUserGroupRouter.GET("/login_log", publicUser.GetLoginLogHandler(serverCtx))
 

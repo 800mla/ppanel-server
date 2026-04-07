@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/report"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/exchangeRate"
@@ -391,6 +392,7 @@ func (l *PurchaseCheckoutLogic) queryExchangeRateCents(to string, src int64) (in
 func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) error {
 	var userInfo user.User
 	var err error
+	promoService := promo.NewService(l.svcCtx)
 	if o.Amount == 0 {
 		// No payment required for zero-amount orders
 		l.Logger.Info(
@@ -398,7 +400,12 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 			logger.Field("orderNo", o.OrderNo),
 			logger.Field("userId", u.Id),
 		)
-		err = l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, o.OrderNo, 2)
+		err = l.svcCtx.DB.Transaction(func(db *gorm.DB) error {
+			if err := l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, o.OrderNo, 2, db); err != nil {
+				return err
+			}
+			return promoService.ConsumePromoByOrderID(l.ctx, o.Id, db)
+		})
 		if err != nil {
 			l.Errorw("[PurchaseCheckout] Update order status error",
 				logger.Field("error", err.Error()),
@@ -498,7 +505,10 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 		}
 
 		// Mark order as paid (status = 2)
-		return l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, o.OrderNo, 2, db)
+		if err = l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, o.OrderNo, 2, db); err != nil {
+			return err
+		}
+		return promoService.ConsumePromoByOrderID(l.ctx, o.Id, db)
 	})
 
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/hibiken/asynq"
@@ -145,39 +146,12 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		}
 		coupon = calculateCoupon(amount, couponInfo)
 	}
-	// Calculate the handling fee
-	amount -= coupon
+	baseAmount := amount - coupon
 	// find payment method
 	payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
 	if err != nil {
 		l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
-	}
-	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount = calculateFee(amount, payment)
-		amount += feeAmount
-
-		// Final validation after adding fee
-		if amount > MaxOrderAmount {
-			l.Errorw("[Purchase] Final order amount exceeds maximum limit after fee",
-				logger.Field("amount", amount),
-				logger.Field("max", MaxOrderAmount),
-				logger.Field("user_id", u.Id))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
-		}
-	}
-	// Calculate gift amount deduction after fee calculation
-	var deductionAmount int64
-	if u.GiftAmount > 0 && amount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			amount = 0
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-		}
 	}
 	// query user is new purchase or renewal
 	isNew, err := l.svcCtx.OrderModel.IsUserEligibleForNewOrder(l.ctx, u.Id)
@@ -192,18 +166,21 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		Type:           1,
 		Quantity:       req.Quantity,
 		Price:          price,
-		Amount:         amount,
+		Amount:         0,
 		Discount:       discountAmount,
-		GiftAmount:     deductionAmount,
+		GiftAmount:     0,
 		Coupon:         req.Coupon,
 		CouponDiscount: coupon,
+		PromoCampaignKey: "",
+		PromoDiscount:    0,
 		PaymentId:      payment.Id,
 		Method:         payment.Platform,
-		FeeAmount:      feeAmount,
+		FeeAmount:      0,
 		Status:         1,
 		IsNew:          isNew,
 		SubscribeId:    req.SubscribeId,
 	}
+	promoService := promo.NewService(l.svcCtx)
 	// Database transaction
 	err = l.svcCtx.DB.Transaction(func(db *gorm.DB) error {
 		// check subscribe plan quota limit inside transaction to prevent race condition
@@ -223,6 +200,45 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 				return errors.Wrapf(xerr.NewErrCode(xerr.SubscribeQuotaLimit), "quota limit")
 			}
 		}
+
+		lockedGrant, e := promoService.LockGrantForOrder(l.ctx, u.Id, orderInfo.Type, db)
+		if e != nil {
+			return e
+		}
+		promoAmount := int64(0)
+		if lockedGrant != nil {
+			promoAmount = min(baseAmount, lockedGrant.DiscountValue)
+			orderInfo.PromoCampaignKey = lockedGrant.CampaignKey
+			orderInfo.PromoDiscount = promoAmount
+		} else {
+			orderInfo.PromoCampaignKey = ""
+			orderInfo.PromoDiscount = 0
+		}
+
+		amountAfterPromo := baseAmount - promoAmount
+		feeAmount := int64(0)
+		if amountAfterPromo > 0 {
+			feeAmount = calculateFee(amountAfterPromo, payment)
+		}
+		finalAmount := amountAfterPromo + feeAmount
+		if finalAmount > MaxOrderAmount {
+			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
+		}
+
+		deductionAmount := int64(0)
+		if u.GiftAmount > 0 && finalAmount > 0 {
+			if u.GiftAmount >= finalAmount {
+				deductionAmount = finalAmount
+				finalAmount = 0
+			} else {
+				deductionAmount = u.GiftAmount
+				finalAmount -= u.GiftAmount
+			}
+		}
+
+		orderInfo.FeeAmount = feeAmount
+		orderInfo.GiftAmount = deductionAmount
+		orderInfo.Amount = finalAmount
 
 		// update user gift amount and create deduction record
 		if orderInfo.GiftAmount > 0 {
@@ -268,8 +284,10 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			}
 		}
 
-		// insert order
-		return db.WithContext(l.ctx).Model(&order.Order{}).Create(&orderInfo).Error
+		if err = db.WithContext(l.ctx).Model(&order.Order{}).Create(&orderInfo).Error; err != nil {
+			return err
+		}
+		return promoService.BindGrantToOrder(l.ctx, lockedGrant, orderInfo.Id, db)
 	})
 	if err != nil {
 		l.Errorw("[Purchase] Database insert error", logger.Field("error", err.Error()), logger.Field("orderInfo", orderInfo))

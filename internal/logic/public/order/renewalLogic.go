@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"gorm.io/gorm"
@@ -127,34 +128,11 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		l.Errorw("[Renewal] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment error: %v", err.Error())
 	}
-	amount -= coupon
+	baseAmount := amount - coupon
 
-	var deductionAmount int64
-	// Check user deduction amount
-	if u.GiftAmount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			u.GiftAmount -= deductionAmount
-			amount = 0
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-			u.GiftAmount = 0
-		}
-	}
-
-	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount = calculateFee(amount, payment)
-	}
-
-	amount += feeAmount
-
-	// Final validation after adding fee
-	if amount > MaxOrderAmount {
+	if baseAmount > MaxOrderAmount {
 		l.Errorw("[Renewal] Final order amount exceeds maximum limit after fee",
-			logger.Field("amount", amount),
+			logger.Field("amount", baseAmount),
 			logger.Field("max", MaxOrderAmount),
 			logger.Field("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
@@ -168,20 +146,64 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		Type:           2,
 		Quantity:       req.Quantity,
 		Price:          price,
-		Amount:         amount,
-		GiftAmount:     deductionAmount,
+		Amount:         0,
+		GiftAmount:     0,
 		Discount:       discountAmount,
 		Coupon:         req.Coupon,
 		CouponDiscount: coupon,
+		PromoCampaignKey: "",
+		PromoDiscount:    0,
 		PaymentId:      payment.Id,
 		Method:         payment.Platform,
-		FeeAmount:      feeAmount,
+		FeeAmount:      0,
 		Status:         1,
 		SubscribeId:    userSubscribe.SubscribeId,
 		SubscribeToken: userSubscribe.Token,
 	}
+	promoService := promo.NewService(l.svcCtx)
 	// Database transaction
 	err = l.svcCtx.DB.Transaction(func(db *gorm.DB) error {
+		lockedGrant, e := promoService.LockGrantForOrder(l.ctx, u.Id, orderInfo.Type, db)
+		if e != nil {
+			return e
+		}
+		promoAmount := int64(0)
+		if lockedGrant != nil {
+			promoAmount = min(baseAmount, lockedGrant.DiscountValue)
+			orderInfo.PromoCampaignKey = lockedGrant.CampaignKey
+			orderInfo.PromoDiscount = promoAmount
+		} else {
+			orderInfo.PromoCampaignKey = ""
+			orderInfo.PromoDiscount = 0
+		}
+
+		amountAfterPromo := baseAmount - promoAmount
+		feeAmount := int64(0)
+		if amountAfterPromo > 0 {
+			feeAmount = calculateFee(amountAfterPromo, payment)
+		}
+		finalAmount := amountAfterPromo + feeAmount
+		if finalAmount > MaxOrderAmount {
+			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
+		}
+
+		deductionAmount := int64(0)
+		if u.GiftAmount > 0 && finalAmount > 0 {
+			if u.GiftAmount >= finalAmount {
+				deductionAmount = finalAmount
+				u.GiftAmount -= deductionAmount
+				finalAmount = 0
+			} else {
+				deductionAmount = u.GiftAmount
+				finalAmount -= u.GiftAmount
+				u.GiftAmount = 0
+			}
+		}
+
+		orderInfo.FeeAmount = feeAmount
+		orderInfo.GiftAmount = deductionAmount
+		orderInfo.Amount = finalAmount
+
 		// update user deduction && Pre deduction ,Return after canceling the order
 		if orderInfo.GiftAmount > 0 {
 			// update user deduction && Pre deduction ,Return after canceling the order
@@ -211,8 +233,13 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 				return err
 			}
 		}
-		// insert order
-		return db.Model(&order.Order{}).Create(&orderInfo).Error
+		if err := db.Model(&order.Order{}).Create(&orderInfo).Error; err != nil {
+			return err
+		}
+		if orderInfo.PromoDiscount > 0 {
+			return promoService.BindGrantToOrder(l.ctx, lockedGrant, orderInfo.Id, db)
+		}
+		return nil
 	})
 	if err != nil {
 		l.Errorw("[Renewal] Database insert error", logger.Field("error", err.Error()), logger.Field("order", orderInfo))

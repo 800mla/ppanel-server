@@ -11,6 +11,7 @@ import (
 	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
@@ -131,6 +132,10 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 			Verified:       email.EnableVerify,
 		}
 		if err = db.Create(authInfo).Error; err != nil {
+			return err
+		}
+
+		if err = promo.NewService(l.svcCtx).GrantSignupPromo(l.ctx, userInfo.Id, db); err != nil {
 			return err
 		}
 

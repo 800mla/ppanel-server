@@ -29,10 +29,20 @@ type (
 		AuthMethods           []UserAuthMethod `json:"auth_methods"`
 		UserDevices           []UserDevice     `json:"user_devices"`
 		Rules                 []string         `json:"rules"`
+		Promo                 *UserPromoStatus `json:"promo,omitempty"`
 		CreatedAt             int64            `json:"created_at"`
 		UpdatedAt             int64            `json:"updated_at"`
 		DeletedAt             int64            `json:"deleted_at,omitempty"`
 		IsDel                 bool             `json:"is_del,omitempty"`
+	}
+	UserPromoStatus {
+		HasActivePromo   bool   `json:"has_active_promo"`
+		Status           string `json:"status"`
+		ExpiresAt        int64  `json:"expires_at"`
+		RemainingSeconds int64  `json:"remaining_seconds"`
+		Title            string `json:"title"`
+		Description      string `json:"description"`
+		Dismissed        bool   `json:"dismissed"`
 	}
 	Follow {
 		Id        int64  `json:"id"`
@@ -402,6 +412,8 @@ type (
 		Discount       int64         `json:"discount"`
 		Coupon         string        `json:"coupon"`
 		CouponDiscount int64         `json:"coupon_discount"`
+		PromoCampaignKey string      `json:"promo_campaign_key"`
+		PromoDiscount    int64       `json:"promo_discount"`
 		Commission     int64         `json:"commission,omitempty"`
 		Payment        PaymentMethod `json:"payment"`
 		FeeAmount      int64         `json:"fee_amount"`
@@ -423,6 +435,8 @@ type (
 		Discount       int64         `json:"discount"`
 		Coupon         string        `json:"coupon"`
 		CouponDiscount int64         `json:"coupon_discount"`
+		PromoCampaignKey string      `json:"promo_campaign_key"`
+		PromoDiscount    int64       `json:"promo_discount"`
 		Commission     int64         `json:"commission,omitempty"`
 		Payment        PaymentMethod `json:"payment"`
 		Method         string        `json:"method"`
@@ -629,6 +643,7 @@ type (
 		GiftAmount     int64  `json:"gift_amount"`
 		Coupon         string `json:"coupon"`
 		CouponDiscount int64  `json:"coupon_discount"`
+		PromoDiscount  int64  `json:"promo_discount"`
 		FeeAmount      int64  `json:"fee_amount"`
 	}
 	PurchaseOrderResponse {
@@ -925,4 +940,3 @@ type (
 		ConfigSnapshot map[string]interface{} `json:"config_snapshot,omitempty"`
 	}
 )
-

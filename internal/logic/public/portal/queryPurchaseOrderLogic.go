@@ -68,6 +68,8 @@ func (l *QueryPurchaseOrderLogic) QueryPurchaseOrder(req *types.QueryPurchaseOrd
 		Discount:       orderInfo.Discount,
 		Coupon:         orderInfo.Coupon,
 		CouponDiscount: orderInfo.CouponDiscount,
+		PromoCampaignKey: orderInfo.PromoCampaignKey,
+		PromoDiscount:    orderInfo.PromoDiscount,
 		FeeAmount:      orderInfo.FeeAmount,
 		Payment:        paymentInfo,
 		Status:         orderInfo.Status,

@@ -172,6 +172,10 @@ service ppanel {
 	@handler QueryUserInfo
 	get /info returns (User)
 
+	@doc "Dismiss User Promo"
+	@handler DismissUserPromo
+	put /promo/dismiss
+
 	@doc "Update User Notify"
 	@handler UpdateUserNotify
 	put /notify (UpdateUserNotifyRequest)
@@ -303,4 +307,3 @@ service ppanel {
 	@handler DeviceWsConnect
 	get /device_ws_connect
 }
-

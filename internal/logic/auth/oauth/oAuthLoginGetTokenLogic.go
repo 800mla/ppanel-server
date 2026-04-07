@@ -10,6 +10,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/jwt"
@@ -391,6 +392,10 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 			if err := l.createAuthMethod(db, userInfo.Id, AuthEmail, email, requestID); err != nil {
 				return err
 			}
+		}
+
+		if err := promo.NewService(l.svcCtx).GrantSignupPromo(l.ctx, userInfo.Id, db); err != nil {
+			return err
 		}
 
 		if l.svcCtx.Config.Register.EnableTrial {

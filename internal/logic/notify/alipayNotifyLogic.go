@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -17,6 +18,7 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/alipay"
 	"github.com/perfect-panel/server/queue/types"
+	"gorm.io/gorm"
 )
 
 type AlipayNotifyLogic struct {
@@ -63,12 +65,16 @@ func (l *AlipayNotifyLogic) AlipayNotify(r *http.Request) error {
 			return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
 		}
 
-		if orderInfo.Status == 5 {
+		if orderInfo.Status == 2 || orderInfo.Status == 5 {
 			return nil
 		}
 
-		// Update order status
-		err = l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, notify.OrderNo, 2)
+		err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+			if err := l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, notify.OrderNo, 2, tx); err != nil {
+				return err
+			}
+			return promo.NewService(l.svcCtx).ConsumePromoByOrderID(l.ctx, orderInfo.Id, tx)
+		})
 		if err != nil {
 			l.Logger.Error("[AlipayNotify] Update order status failed", logger.Field("error", err.Error()), logger.Field("orderNo", notify.OrderNo))
 			return err

@@ -23,6 +23,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/ticket"
 	"github.com/perfect-panel/server/internal/model/traffic"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/model/userpromo"
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/nodeMultiplier"
@@ -58,6 +59,7 @@ type ServiceContext struct {
 	RedemptionCodeModel   redemption.RedemptionCodeModel
 	RedemptionRecordModel redemption.RedemptionRecordModel
 	PaymentModel          payment.Model
+	UserPromoGrantModel   userpromo.Model
 	DocumentModel         document.Model
 	SubscribeModel        subscribe.Model
 	TrafficLogModel       traffic.Model
@@ -128,6 +130,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		RedemptionCodeModel:   redemption.NewRedemptionCodeModel(db, rds),
 		RedemptionRecordModel: redemption.NewRedemptionRecordModel(db, rds),
 		PaymentModel:          payment.NewModel(db, rds),
+		UserPromoGrantModel:   userpromo.NewModel(db),
 		DocumentModel:         document.NewModel(db, rds),
 		SubscribeModel:        subscribe.NewModel(db, rds),
 		TrafficLogModel:       traffic.NewModel(db),

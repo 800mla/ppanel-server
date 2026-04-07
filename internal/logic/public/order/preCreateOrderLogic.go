@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/tool"
 
 	"github.com/perfect-panel/server/pkg/constant"
@@ -117,6 +118,11 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 		couponAmount = calculateCoupon(amount, couponInfo)
 	}
 	amount -= couponAmount
+	promoAmount, err := promo.NewService(l.svcCtx).PreviewDiscountForUser(l.ctx, u.Id, 1, amount)
+	if err != nil {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find promo error: %v", err.Error())
+	}
+	amount -= promoAmount
 	var feeAmount int64
 	if req.Payment != 0 {
 		payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
@@ -149,6 +155,7 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 		GiftAmount:     deductionAmount,
 		Coupon:         req.Coupon,
 		CouponDiscount: couponAmount,
+		PromoDiscount:  promoAmount,
 		FeeAmount:      feeAmount,
 	}
 	return

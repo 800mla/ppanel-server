@@ -1523,6 +1523,8 @@ type Order struct {
 	Discount       int64         `json:"discount"`
 	Coupon         string        `json:"coupon"`
 	CouponDiscount int64         `json:"coupon_discount"`
+	PromoCampaignKey string      `json:"promo_campaign_key"`
+	PromoDiscount    int64       `json:"promo_discount"`
 	Commission     int64         `json:"commission,omitempty"`
 	Payment        PaymentMethod `json:"payment"`
 	FeeAmount      int64         `json:"fee_amount"`
@@ -1545,6 +1547,8 @@ type OrderDetail struct {
 	Discount       int64         `json:"discount"`
 	Coupon         string        `json:"coupon"`
 	CouponDiscount int64         `json:"coupon_discount"`
+	PromoCampaignKey string      `json:"promo_campaign_key"`
+	PromoDiscount    int64       `json:"promo_discount"`
 	Commission     int64         `json:"commission,omitempty"`
 	Payment        PaymentMethod `json:"payment"`
 	Method         string        `json:"method"`
@@ -1638,6 +1642,7 @@ type PreOrderResponse struct {
 	GiftAmount     int64  `json:"gift_amount"`
 	Coupon         string `json:"coupon"`
 	CouponDiscount int64  `json:"coupon_discount"`
+	PromoDiscount  int64  `json:"promo_discount"`
 	FeeAmount      int64  `json:"fee_amount"`
 }
 
@@ -1646,6 +1651,9 @@ type PrePurchaseOrderRequest struct {
 	SubscribeId int64  `json:"subscribe_id"`
 	Quantity    int64  `json:"quantity"`
 	Coupon      string `json:"coupon,omitempty"`
+	AuthType    string `json:"auth_type,omitempty"`
+	Identifier  string `json:"identifier,omitempty"`
+	Password    string `json:"password,omitempty"`
 }
 
 type PrePurchaseOrderResponse struct {
@@ -1654,6 +1662,7 @@ type PrePurchaseOrderResponse struct {
 	Discount       int64  `json:"discount"`
 	Coupon         string `json:"coupon"`
 	CouponDiscount int64  `json:"coupon_discount"`
+	PromoDiscount  int64  `json:"promo_discount"`
 	FeeAmount      int64  `json:"fee_amount"`
 }
 
@@ -1831,6 +1840,8 @@ type QueryPurchaseOrderResponse struct {
 	Discount       int64         `json:"discount"`
 	Coupon         string        `json:"coupon"`
 	CouponDiscount int64         `json:"coupon_discount"`
+	PromoCampaignKey string      `json:"promo_campaign_key"`
+	PromoDiscount    int64       `json:"promo_discount"`
 	FeeAmount      int64         `json:"fee_amount"`
 	Payment        PaymentMethod `json:"payment"`
 	Status         uint8         `json:"status"`
@@ -2883,10 +2894,21 @@ type User struct {
 	AuthMethods           []UserAuthMethod `json:"auth_methods"`
 	UserDevices           []UserDevice     `json:"user_devices"`
 	Rules                 []string         `json:"rules"`
+	Promo                 *UserPromoStatus `json:"promo,omitempty"`
 	CreatedAt             int64            `json:"created_at"`
 	UpdatedAt             int64            `json:"updated_at"`
 	DeletedAt             int64            `json:"deleted_at,omitempty"`
 	IsDel                 bool             `json:"is_del,omitempty"`
+}
+
+type UserPromoStatus struct {
+	HasActivePromo   bool   `json:"has_active_promo"`
+	Status           string `json:"status"`
+	ExpiresAt        int64  `json:"expires_at"`
+	RemainingSeconds int64  `json:"remaining_seconds"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	Dismissed        bool   `json:"dismissed"`
 }
 
 type UserAffiliate struct {

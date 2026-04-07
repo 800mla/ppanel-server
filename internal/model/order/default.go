@@ -73,7 +73,7 @@ func (m *defaultOrderModel) Insert(ctx context.Context, data *Order, tx ...*gorm
 		if len(tx) > 0 {
 			conn = tx[0]
 		}
-		return conn.Create(&data).Error
+		return conn.Create(data).Error
 	}, m.getCacheKeys(data)...)
 	return err
 }

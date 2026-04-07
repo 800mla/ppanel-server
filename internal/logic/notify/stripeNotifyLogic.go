@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -17,6 +18,7 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/queue/types"
+	"gorm.io/gorm"
 )
 
 type StripeNotifyLogic struct {
@@ -68,11 +70,15 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
 	}
 	if notify.EventType == "payment_intent.succeeded" {
-		if orderInfo.Status == 5 {
+		if orderInfo.Status == 2 || orderInfo.Status == 5 {
 			return nil
 		}
-		// update order status
-		err = l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, notify.OrderNo, 2)
+		err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+			if err := l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, notify.OrderNo, 2, tx); err != nil {
+				return err
+			}
+			return promo.NewService(l.svcCtx).ConsumePromoByOrderID(l.ctx, orderInfo.Id, tx)
+		})
 		if err != nil {
 			return err
 		}

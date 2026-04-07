@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
@@ -61,6 +62,10 @@ func (l *QueryUserInfoLogic) QueryUserInfo() (resp *types.User, err error) {
 	})
 
 	resp.AuthMethods = userMethods
+	resp.Promo, err = promo.NewService(l.svcCtx).GetUserPromoStatus(l.ctx, u.Id)
+	if err != nil {
+		return nil, err
+	}
 	return resp, nil
 }
 

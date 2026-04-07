@@ -7,6 +7,7 @@ import (
 
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"gorm.io/gorm"
 
@@ -61,6 +62,9 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		return nil
 	}
 
+	promoService := promo.NewService(l.svcCtx)
+	var cacheUser *user.User
+
 	err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
 		// update order status
 		err := tx.Model(&order.Order{}).Where("order_no = ?", req.OrderNo).Update("status", 3).Error
@@ -70,6 +74,24 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 				logger.Field("orderNo", req.OrderNo),
 			)
 			return err
+		}
+		if err = promoService.ReleaseReservationByOrderID(l.ctx, orderInfo.Id, tx); err != nil {
+			l.Errorw("[CloseOrder] Release promo reservation failed",
+				logger.Field("error", err.Error()),
+				logger.Field("orderNo", req.OrderNo),
+				logger.Field("orderId", orderInfo.Id),
+			)
+			return err
+		}
+		if sub.Inventory != -1 {
+			sub.Inventory++
+			if e := l.svcCtx.SubscribeModel.Update(l.ctx, sub, tx); e != nil {
+				l.Errorw("[CloseOrder] Restore subscribe inventory failed",
+					logger.Field("error", e.Error()),
+					logger.Field("subscribeId", sub.Id),
+				)
+				return e
+			}
 		}
 		// If User ID is 0, it means that the order is a guest order and does not need to be refunded, the order can be deleted directly
 		if orderInfo.UserId == 0 {
@@ -85,8 +107,8 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		}
 		// refund deduction amount to user deduction balance
 		if orderInfo.GiftAmount > 0 {
-			userInfo, err := l.svcCtx.UserModel.FindOne(l.ctx, orderInfo.UserId)
-			if err != nil {
+			var userInfo user.User
+			if err = tx.Model(&user.User{}).Where("id = ?", orderInfo.UserId).First(&userInfo).Error; err != nil {
 				l.Errorw("[CloseOrder] Find user info failed",
 					logger.Field("error", err.Error()),
 					logger.Field("user_id", orderInfo.UserId),
@@ -131,18 +153,8 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 				)
 				return err
 			}
-			// update user cache
-			return l.svcCtx.UserModel.UpdateUserCache(l.ctx, userInfo)
-		}
-		if sub.Inventory != -1 {
-			sub.Inventory++
-			if e := l.svcCtx.SubscribeModel.Update(l.ctx, sub, tx); e != nil {
-				l.Errorw("[CloseOrder] Restore subscribe inventory failed",
-					logger.Field("error", e.Error()),
-					logger.Field("subscribeId", sub.Id),
-				)
-				return e
-			}
+			userInfo.GiftAmount = deduction
+			cacheUser = &userInfo
 		}
 
 		return nil
@@ -150,6 +162,16 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 	if err != nil {
 		logger.Errorf("[CloseOrder] Transaction failed: %v", err.Error())
 		return err
+	}
+	if cacheUser != nil {
+		if err = l.svcCtx.UserModel.UpdateUserCache(l.ctx, cacheUser); err != nil {
+			l.Errorw("[CloseOrder] Update user cache failed",
+				logger.Field("error", err.Error()),
+				logger.Field("orderNo", req.OrderNo),
+				logger.Field("userId", cacheUser.Id),
+			)
+			return err
+		}
 	}
 	return nil
 }

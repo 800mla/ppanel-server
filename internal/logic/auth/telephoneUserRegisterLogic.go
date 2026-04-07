@@ -11,6 +11,7 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
@@ -139,6 +140,9 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		userInfo.ReferCode = uuidx.UserInviteCode(userInfo.Id)
 		// Update ReferCode
 		if err := db.Model(&user.User{}).Where("id = ?", userInfo.Id).Update("refer_code", userInfo.ReferCode).Error; err != nil {
+			return err
+		}
+		if err := promo.NewService(l.svcCtx).GrantSignupPromo(l.ctx, userInfo.Id, db); err != nil {
 			return err
 		}
 		if l.svcCtx.Config.Register.EnableTrial {

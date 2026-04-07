@@ -24,6 +24,8 @@ type Details struct {
 	Discount       int64                `gorm:"type:int;not null;default:0;comment:Order Discount"`
 	Coupon         string               `gorm:"type:varchar(255);default:null;comment:Coupon"`
 	CouponDiscount int64                `gorm:"type:int;not null;default:0;comment:Coupon Discount"`
+	PromoCampaignKey string             `gorm:"type:varchar(100);not null;default:'';comment:Promo Campaign Key"`
+	PromoDiscount    int64              `gorm:"type:int;not null;default:0;comment:Promo Discount"`
 	PaymentId      int64                `gorm:"type:bigint;not null;default:0;comment:Payment Id"`
 	Payment        *payment.Payment     `gorm:"foreignKey:PaymentId;references:Id"`
 	Method         string               `gorm:"type:varchar(255);not null;default:'';comment:Payment Method"`

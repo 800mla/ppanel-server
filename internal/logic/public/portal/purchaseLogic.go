@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
@@ -41,14 +42,6 @@ const (
 )
 
 func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.PortalPurchaseResponse, err error) {
-	// find user auth
-	userAuth, err := l.svcCtx.UserModel.FindUserAuthMethodByOpenID(l.ctx, req.AuthType, req.Identifier)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth error: %v", err.Error())
-	}
-	if userAuth.UserId != 0 {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "user already exists")
-	}
 	// find subscribe plan
 	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, req.SubscribeId)
 	if err != nil {
@@ -115,32 +108,68 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.PaymentMethodNotFound), "balance error")
 	}
 
-	var feeAmount int64
-	finalAmount := amount
-	if finalAmount > 0 {
-		feeAmount = calculateFee(finalAmount, paymentConfig)
-		finalAmount += feeAmount
-	}
+	baseAmount := amount
 	// create order
 	orderInfo := &order.Order{
+		UserId:         0,
 		OrderNo:        tool.GenerateTradeNo(),
 		Type:           1,
 		Quantity:       req.Quantity,
 		Price:          price,
-		Amount:         finalAmount,
+		Amount:         0,
 		Discount:       discountAmount,
 		GiftAmount:     0,
 		Coupon:         req.Coupon,
 		CouponDiscount: couponAmount,
+		PromoCampaignKey: "",
+		PromoDiscount:    0,
 		PaymentId:      req.Payment,
 		Method:         paymentConfig.Platform,
-		FeeAmount:      feeAmount,
+		FeeAmount:      0,
 		Status:         1,
-		IsNew:          true,
+		IsNew:          false,
 		SubscribeId:    req.SubscribeId,
 	}
+	promoService := promo.NewService(l.svcCtx)
 	// save order
 	err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+		orderUser, isNewSignup, err := ensurePortalOrderUser(l.ctx, l.svcCtx, tx, req)
+		if err != nil {
+			return err
+		}
+		orderInfo.UserId = orderUser.Id
+
+		var paidCount int64
+		if err = tx.Model(&order.Order{}).
+			Where("user_id = ? AND status IN ?", orderUser.Id, []int64{2, 5}).
+			Count(&paidCount).Error; err != nil {
+			return err
+		}
+		orderInfo.IsNew = paidCount == 0
+
+		lockedGrant, err := promoService.LockGrantForOrder(l.ctx, orderUser.Id, orderInfo.Type, tx)
+		if err != nil {
+			return err
+		}
+		promoAmount := int64(0)
+		if lockedGrant != nil {
+			promoAmount = min(baseAmount, lockedGrant.DiscountValue)
+			orderInfo.PromoCampaignKey = lockedGrant.CampaignKey
+			orderInfo.PromoDiscount = promoAmount
+		} else if isNewSignup {
+			orderInfo.PromoCampaignKey = ""
+			orderInfo.PromoDiscount = 0
+		}
+
+		feeAmount := int64(0)
+		finalAmount := baseAmount - promoAmount
+		if finalAmount > 0 {
+			feeAmount = calculateFee(finalAmount, paymentConfig)
+			finalAmount += feeAmount
+		}
+		orderInfo.FeeAmount = feeAmount
+		orderInfo.Amount = finalAmount
+
 		// save guest order and user information
 		tempOrder := constant.TemporaryOrderInfo{
 			OrderNo:    orderInfo.OrderNo,
@@ -170,7 +199,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		if err = l.svcCtx.OrderModel.Insert(l.ctx, orderInfo, tx); err != nil {
 			return err
 		}
-		return nil
+		return promoService.BindGrantToOrder(l.ctx, lockedGrant, orderInfo.Id, tx)
 	})
 	if err != nil {
 		l.Errorw("[Purchase] Database transaction error", logger.Field("error", err.Error()))
