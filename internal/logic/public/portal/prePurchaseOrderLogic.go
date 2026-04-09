@@ -68,15 +68,15 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 	}
 	amount -= coupon
 	promoAmount := int64(0)
-	if previewUser, isNewSignup, err := resolvePortalPreviewUser(l.ctx, l.svcCtx, req.AuthType, req.Identifier, req.Password); err != nil {
+	previewState, err := resolvePortalPreviewState(l.ctx, l.svcCtx, req.AuthType, req.Identifier, req.Password)
+	if err != nil {
 		return nil, err
-	} else if previewUser != nil {
-		promoAmount, err = promo.NewService(l.svcCtx).PreviewDiscountForUser(l.ctx, previewUser.Id, 1, amount)
+	}
+	if previewState.User != nil {
+		promoAmount, err = promo.NewService(l.svcCtx).PreviewDiscountForUser(l.ctx, previewState.User.Id, 1, amount)
 		if err != nil {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find promo error: %v", err.Error())
 		}
-	} else if isNewSignup {
-		promoAmount = promo.NewService(l.svcCtx).PreviewDiscountForNewSignup(amount)
 	}
 	amount -= promoAmount
 	var feeAmount int64
@@ -94,13 +94,15 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 	}
 
 	resp = &types.PrePurchaseOrderResponse{
-		Price:          price,
-		Amount:         amount,
-		Discount:       discountAmount,
-		Coupon:         req.Coupon,
-		CouponDiscount: coupon,
-		PromoDiscount:  promoAmount,
-		FeeAmount:      feeAmount,
+		Price:               price,
+		Amount:              amount,
+		Discount:            discountAmount,
+		Coupon:              req.Coupon,
+		CouponDiscount:      coupon,
+		PromoDiscount:       promoAmount,
+		FeeAmount:           feeAmount,
+		CanPurchase:         previewState.CanPurchase,
+		PurchaseBlockReason: previewState.PurchaseBlockReason,
 	}
 	return
 }

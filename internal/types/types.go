@@ -1632,7 +1632,8 @@ type PortalPurchaseRequest struct {
 }
 
 type PortalPurchaseResponse struct {
-	OrderNo string `json:"order_no"`
+	OrderNo       string `json:"order_no"`
+	PayableAmount int64  `json:"payable_amount"`
 }
 
 type PreOrderResponse struct {
@@ -1657,13 +1658,15 @@ type PrePurchaseOrderRequest struct {
 }
 
 type PrePurchaseOrderResponse struct {
-	Price          int64  `json:"price"`
-	Amount         int64  `json:"amount"`
-	Discount       int64  `json:"discount"`
-	Coupon         string `json:"coupon"`
-	CouponDiscount int64  `json:"coupon_discount"`
-	PromoDiscount  int64  `json:"promo_discount"`
-	FeeAmount      int64  `json:"fee_amount"`
+	Price               int64  `json:"price"`
+	Amount              int64  `json:"amount"`
+	Discount            int64  `json:"discount"`
+	Coupon              string `json:"coupon"`
+	CouponDiscount      int64  `json:"coupon_discount"`
+	PromoDiscount       int64  `json:"promo_discount"`
+	FeeAmount           int64  `json:"fee_amount"`
+	CanPurchase         bool   `json:"can_purchase"`
+	PurchaseBlockReason string `json:"purchase_block_reason,omitempty"`
 }
 
 type PreRenewalOrderResponse struct {
@@ -1832,21 +1835,22 @@ type QueryPurchaseOrderRequest struct {
 }
 
 type QueryPurchaseOrderResponse struct {
-	OrderNo        string        `json:"order_no"`
-	Subscribe      Subscribe     `json:"subscribe"`
-	Quantity       int64         `json:"quantity"`
-	Price          int64         `json:"price"`
-	Amount         int64         `json:"amount"`
-	Discount       int64         `json:"discount"`
-	Coupon         string        `json:"coupon"`
-	CouponDiscount int64         `json:"coupon_discount"`
+	OrderNo          string        `json:"order_no"`
+	Subscribe        Subscribe     `json:"subscribe"`
+	Quantity         int64         `json:"quantity"`
+	Price            int64         `json:"price"`
+	Amount           int64         `json:"amount"`
+	PayableAmount    int64         `json:"payable_amount"`
+	Discount         int64         `json:"discount"`
+	Coupon           string        `json:"coupon"`
+	CouponDiscount   int64         `json:"coupon_discount"`
 	PromoCampaignKey string      `json:"promo_campaign_key"`
 	PromoDiscount    int64       `json:"promo_discount"`
-	FeeAmount      int64         `json:"fee_amount"`
-	Payment        PaymentMethod `json:"payment"`
-	Status         uint8         `json:"status"`
-	CreatedAt      int64         `json:"created_at"`
-	Token          string        `json:"token,omitempty"`
+	FeeAmount        int64         `json:"fee_amount"`
+	Payment          PaymentMethod `json:"payment"`
+	Status           uint8         `json:"status"`
+	CreatedAt        int64         `json:"created_at"`
+	Token            string        `json:"token,omitempty"`
 }
 
 type QueryQuotaTaskListRequest struct {

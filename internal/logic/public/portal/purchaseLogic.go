@@ -133,7 +133,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	promoService := promo.NewService(l.svcCtx)
 	// save order
 	err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
-		orderUser, isNewSignup, err := ensurePortalOrderUser(l.ctx, l.svcCtx, tx, req)
+		orderUser, err := ensurePortalOrderUser(l.ctx, l.svcCtx, tx, req)
 		if err != nil {
 			return err
 		}
@@ -156,7 +156,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 			promoAmount = min(baseAmount, lockedGrant.DiscountValue)
 			orderInfo.PromoCampaignKey = lockedGrant.CampaignKey
 			orderInfo.PromoDiscount = promoAmount
-		} else if isNewSignup {
+		} else {
 			orderInfo.PromoCampaignKey = ""
 			orderInfo.PromoDiscount = 0
 		}
@@ -203,6 +203,10 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	})
 	if err != nil {
 		l.Errorw("[Purchase] Database transaction error", logger.Field("error", err.Error()))
+		var codeErr *xerr.CodeError
+		if errors.As(errors.Cause(err), &codeErr) {
+			return nil, err
+		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "transaction error: %v", err.Error())
 	}
 	// Deferred task
@@ -220,6 +224,9 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	} else {
 		l.Infow("[CloseOrder Task] Enqueue task success", logger.Field("TaskID", taskInfo.ID))
 	}
-	resp = &types.PortalPurchaseResponse{OrderNo: orderInfo.OrderNo}
+	resp = &types.PortalPurchaseResponse{
+		OrderNo:       orderInfo.OrderNo,
+		PayableAmount: orderInfo.Amount,
+	}
 	return resp, nil
 }

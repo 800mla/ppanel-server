@@ -60,21 +60,22 @@ func (l *QueryPurchaseOrderLogic) QueryPurchaseOrder(req *types.QueryPurchaseOrd
 	}
 
 	return &types.QueryPurchaseOrderResponse{
-		OrderNo:        orderInfo.OrderNo,
-		Subscribe:      subscribeInfo,
-		Quantity:       orderInfo.Quantity,
-		Price:          orderInfo.Price,
-		Amount:         orderInfo.Amount,
-		Discount:       orderInfo.Discount,
-		Coupon:         orderInfo.Coupon,
-		CouponDiscount: orderInfo.CouponDiscount,
+		OrderNo:          orderInfo.OrderNo,
+		Subscribe:        subscribeInfo,
+		Quantity:         orderInfo.Quantity,
+		Price:            orderInfo.Price,
+		Amount:           orderInfo.Amount,
+		PayableAmount:    orderInfo.Amount,
+		Discount:         orderInfo.Discount,
+		Coupon:           orderInfo.Coupon,
+		CouponDiscount:   orderInfo.CouponDiscount,
 		PromoCampaignKey: orderInfo.PromoCampaignKey,
 		PromoDiscount:    orderInfo.PromoDiscount,
-		FeeAmount:      orderInfo.FeeAmount,
-		Payment:        paymentInfo,
-		Status:         orderInfo.Status,
-		CreatedAt:      orderInfo.CreatedAt.UnixMilli(),
-		Token:          token,
+		FeeAmount:        orderInfo.FeeAmount,
+		Payment:          paymentInfo,
+		Status:           orderInfo.Status,
+		CreatedAt:        orderInfo.CreatedAt.UnixMilli(),
+		Token:            token,
 	}, nil
 }
 
