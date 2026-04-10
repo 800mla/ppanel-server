@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/model/userpromo"
 	"github.com/perfect-panel/server/internal/promo"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -120,11 +121,13 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 
 	var ticketPayload *portalVerificationTicketPayload
 	var releaseTicketLock func()
+	skipSignupPromoForCurrentOrder := false
 	if requirement := resolvePortalVerificationRequirement(previewState); requirement != nil {
 		if err = takePortalPurchaseIPLimit(l.ctx, l.svcCtx, req.IP); err != nil {
 			return nil, err
 		}
 		if requirement.AccountMode == portalAccountModeNewEmail {
+			skipSignupPromoForCurrentOrder = true
 			if err = validatePortalEmailDomain(l.svcCtx, req.Identifier); err != nil {
 				return nil, err
 			}
@@ -201,15 +204,21 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		}
 		orderInfo.IsNew = paidCount == 0
 
-		lockedGrant, err := promoService.LockGrantForOrder(l.ctx, orderUser.Id, orderInfo.Type, tx)
-		if err != nil {
-			return err
-		}
+		var lockedGrant *userpromo.UserPromoGrant
 		promoAmount := int64(0)
-		if lockedGrant != nil {
-			promoAmount = min(baseAmount, lockedGrant.DiscountValue)
-			orderInfo.PromoCampaignKey = lockedGrant.CampaignKey
-			orderInfo.PromoDiscount = promoAmount
+		if !skipSignupPromoForCurrentOrder {
+			lockedGrant, err = promoService.LockGrantForOrder(l.ctx, orderUser.Id, orderInfo.Type, tx)
+			if err != nil {
+				return err
+			}
+			if lockedGrant != nil {
+				promoAmount = min(baseAmount, lockedGrant.DiscountValue)
+				orderInfo.PromoCampaignKey = lockedGrant.CampaignKey
+				orderInfo.PromoDiscount = promoAmount
+			} else {
+				orderInfo.PromoCampaignKey = ""
+				orderInfo.PromoDiscount = 0
+			}
 		} else {
 			orderInfo.PromoCampaignKey = ""
 			orderInfo.PromoDiscount = 0
