@@ -85,10 +85,15 @@ func init() {
 		UseridNotMatch:                     "Userid not match",
 
 		// Order error
-		OrderNotExist:         "Order does not exist",
-		PaymentMethodNotFound: "Payment method not found",
-		OrderStatusError:      "Order status error",
-		InsufficientOfPeriod:  "Insufficient number of period",
+		OrderNotExist:                  "Order does not exist",
+		PaymentMethodNotFound:          "Payment method not found",
+		OrderStatusError:               "Order status error",
+		InsufficientOfPeriod:           "Insufficient number of period",
+		PortalVerificationRequired:     "Portal email verification is required",
+		PortalVerificationTicketInvalid: "Portal verification ticket is invalid",
+		PortalVerificationTicketExpired: "Portal verification ticket is expired",
+		PortalPendingOrderExists:       "A pending portal order already exists",
+		PortalTempEmailNotAllowed:      "Email domain is not allowed for portal checkout",
 	}
 
 }

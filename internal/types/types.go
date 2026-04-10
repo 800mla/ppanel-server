@@ -1623,12 +1623,15 @@ type PortalPurchaseRequest struct {
 	AuthType       string `json:"auth_type"`
 	Identifier     string `json:"identifier"`
 	Password       string `json:"password,omitempty"`
+	PortalVerificationTicket string `json:"portal_verification_ticket,omitempty"`
 	Payment        int64  `json:"payment"`
 	SubscribeId    int64  `json:"subscribe_id"`
 	Quantity       int64  `json:"quantity"`
 	Coupon         string `json:"coupon,omitempty"`
 	InviteCode     string `json:"invite_code,omitempty"`
 	TurnstileToken string `json:"turnstile_token,omitempty"`
+	IP             string `json:"-"`
+	UserAgent      string `json:"-"`
 }
 
 type PortalPurchaseResponse struct {
@@ -1667,6 +1670,45 @@ type PrePurchaseOrderResponse struct {
 	FeeAmount           int64  `json:"fee_amount"`
 	CanPurchase         bool   `json:"can_purchase"`
 	PurchaseBlockReason string `json:"purchase_block_reason,omitempty"`
+	AccountMode         string `json:"account_mode,omitempty"`
+	NextAction          string `json:"next_action,omitempty"`
+	VerificationType    string `json:"verification_type,omitempty"`
+	RequirePassword     bool   `json:"require_password"`
+}
+
+type PortalSendCodeRequest struct {
+	AuthType       string `json:"auth_type"`
+	Identifier     string `json:"identifier" validate:"required,email"`
+	TurnstileToken string `json:"turnstile_token,omitempty"`
+	IP             string `json:"-"`
+	UserAgent      string `json:"-"`
+}
+
+type PortalSendCodeResponse struct {
+	Status           bool   `json:"status"`
+	AccountMode      string `json:"account_mode"`
+	VerificationType string `json:"verification_type"`
+	NextAction       string `json:"next_action"`
+	ResendAfter      int64  `json:"resend_after"`
+	ExpiresIn        int64  `json:"expires_in"`
+}
+
+type PortalVerificationTicketRequest struct {
+	AuthType       string `json:"auth_type"`
+	Identifier     string `json:"identifier" validate:"required,email"`
+	Code           string `json:"code" validate:"required"`
+	TurnstileToken string `json:"turnstile_token,omitempty"`
+	IP             string `json:"-"`
+	UserAgent      string `json:"-"`
+}
+
+type PortalVerificationTicketResponse struct {
+	Verified                 bool   `json:"verified"`
+	AccountMode              string `json:"account_mode"`
+	VerificationType         string `json:"verification_type"`
+	PortalVerificationTicket string `json:"portal_verification_ticket"`
+	ExpiresAt                int64  `json:"expires_at"`
+	RequirePassword          bool   `json:"require_password"`
 }
 
 type PreRenewalOrderResponse struct {

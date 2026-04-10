@@ -42,6 +42,11 @@ const (
 )
 
 func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.PortalPurchaseResponse, err error) {
+	req.AuthType = normalizePortalAuthType(req.AuthType)
+	if _, err = requirePortalPurchaseIdentity(req.AuthType, req.Identifier); err != nil {
+		return nil, err
+	}
+
 	// find subscribe plan
 	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, req.SubscribeId)
 	if err != nil {
@@ -108,6 +113,55 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.PaymentMethodNotFound), "balance error")
 	}
 
+	previewState, err := resolvePortalPreviewState(l.ctx, l.svcCtx, req.AuthType, req.Identifier, req.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	var ticketPayload *portalVerificationTicketPayload
+	var releaseTicketLock func()
+	if requirement := resolvePortalVerificationRequirement(previewState); requirement != nil {
+		if err = takePortalPurchaseIPLimit(l.ctx, l.svcCtx, req.IP); err != nil {
+			return nil, err
+		}
+		if requirement.AccountMode == portalAccountModeNewEmail {
+			if err = validatePortalEmailDomain(l.svcCtx, req.Identifier); err != nil {
+				return nil, err
+			}
+		}
+		ticketPayload, releaseTicketLock, err = l.preparePortalPurchaseTicket(req, requirement.AccountMode)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if releaseTicketLock != nil {
+				releaseTicketLock()
+			}
+		}()
+	} else if !previewState.CanPurchase {
+		switch previewState.NextAction {
+		case portalNextActionInputPassword:
+			return nil, newPortalCheckoutPasswordRequiredErr()
+		case portalNextActionVerifyEmail:
+			return nil, newPortalCheckoutVerificationRequiredErr()
+		default:
+			if previewState.PurchaseBlockReason != "" {
+				return nil, errors.Wrapf(xerr.NewErrCodeMsg(xerr.InvalidParams, previewState.PurchaseBlockReason), previewState.PurchaseBlockReason)
+			}
+		}
+	}
+
+	pendingOrder, err := findPortalPendingOrder(l.ctx, l.svcCtx, req.AuthType, req.Identifier)
+	if err != nil {
+		return nil, err
+	}
+	if pendingOrder != nil {
+		return &types.PortalPurchaseResponse{
+			OrderNo:       pendingOrder.OrderNo,
+			PayableAmount: pendingOrder.Amount,
+		}, nil
+	}
+
 	baseAmount := amount
 	// create order
 	orderInfo := &order.Order{
@@ -133,7 +187,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	promoService := promo.NewService(l.svcCtx)
 	// save order
 	err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
-		orderUser, err := ensurePortalOrderUser(l.ctx, l.svcCtx, tx, req)
+		orderUser, err := resolvePortalOrderUserForPurchase(l.ctx, l.svcCtx, tx, req, ticketPayload)
 		if err != nil {
 			return err
 		}
@@ -224,9 +278,35 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	} else {
 		l.Infow("[CloseOrder Task] Enqueue task success", logger.Field("TaskID", taskInfo.ID))
 	}
-	resp = &types.PortalPurchaseResponse{
+		resp = &types.PortalPurchaseResponse{
 		OrderNo:       orderInfo.OrderNo,
 		PayableAmount: orderInfo.Amount,
 	}
+	if ticketPayload != nil && req.PortalVerificationTicket != "" {
+		if err = consumePortalVerificationTicket(l.ctx, l.svcCtx, req.PortalVerificationTicket); err != nil {
+			l.Errorw("[Purchase] Consume portal verification ticket error", logger.Field("error", err.Error()), logger.Field("identifier", req.Identifier))
+		}
+	}
+	if err = storePortalPendingOrder(l.ctx, l.svcCtx, req.AuthType, req.Identifier, orderInfo.OrderNo); err != nil {
+		l.Errorw("[Purchase] Store portal pending order error", logger.Field("error", err.Error()), logger.Field("identifier", req.Identifier), logger.Field("order_no", orderInfo.OrderNo))
+	}
 	return resp, nil
+}
+
+func (l *PurchaseLogic) preparePortalPurchaseTicket(req *types.PortalPurchaseRequest, expectedAccountMode string) (*portalVerificationTicketPayload, func(), error) {
+	releaseLock, err := acquirePortalVerificationTicketLock(l.ctx, l.svcCtx, req.PortalVerificationTicket)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	payload, err := loadPortalVerificationTicket(l.ctx, l.svcCtx, req.PortalVerificationTicket)
+	if err != nil {
+		releaseLock()
+		return nil, nil, err
+	}
+	if err = validatePortalVerificationTicketPayload(payload, req.AuthType, req.Identifier, req.IP, req.UserAgent, expectedAccountMode); err != nil {
+		releaseLock()
+		return nil, nil, err
+	}
+	return payload, releaseLock, nil
 }

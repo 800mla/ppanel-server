@@ -126,4 +126,9 @@ const (
 	OrderStatusError      uint32 = 61003
 	InsufficientOfPeriod  uint32 = 61004
 	ExistAvailableTraffic uint32 = 61005
+	PortalVerificationRequired uint32 = 61006
+	PortalVerificationTicketInvalid uint32 = 61007
+	PortalVerificationTicketExpired uint32 = 61008
+	PortalPendingOrderExists uint32 = 61009
+	PortalTempEmailNotAllowed uint32 = 61010
 )

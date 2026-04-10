@@ -842,6 +842,12 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		// Pre Purchase Order
 		publicPortalGroupRouter.POST("/pre", publicPortal.PrePurchaseOrderHandler(serverCtx))
 
+		// Portal Send Code
+		publicPortalGroupRouter.POST("/send_code", publicPortal.SendPortalCodeHandler(serverCtx))
+
+		// Portal Verification Ticket
+		publicPortalGroupRouter.POST("/verification/ticket", publicPortal.CreatePortalVerificationTicketHandler(serverCtx))
+
 		// Purchase subscription
 		publicPortalGroupRouter.POST("/purchase", publicPortal.PurchaseHandler(serverCtx))
 

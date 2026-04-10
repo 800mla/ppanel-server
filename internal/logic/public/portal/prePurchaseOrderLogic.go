@@ -103,6 +103,10 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 		FeeAmount:           feeAmount,
 		CanPurchase:         previewState.CanPurchase,
 		PurchaseBlockReason: previewState.PurchaseBlockReason,
+		AccountMode:         previewState.AccountMode,
+		NextAction:          previewState.NextAction,
+		VerificationType:    previewState.VerificationType,
+		RequirePassword:     previewState.RequirePassword,
 	}
 	return
 }

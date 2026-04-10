@@ -35,6 +35,10 @@ func (v VerifyType) String() string {
 // TempOrderCacheKey Cache to Redis Key
 // eg: temp_order:order_no
 const TempOrderCacheKey = "temp_order:%s"
+const PortalVerificationTicketCacheKey = "portal:verification_ticket:%s"
+const PortalVerificationTicketUsedCacheKey = "portal:verification_ticket_used:%s"
+const PortalVerificationTicketLockKey = "portal:verification_ticket_lock:%s"
+const PortalPendingOrderCacheKey = "portal:pending_order:%s:%s"
 
 type TemporaryOrderInfo struct {
 	OrderNo    string `json:"order_no"`

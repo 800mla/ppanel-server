@@ -15,6 +15,7 @@ type (
 		AuthType       string `json:"auth_type"`
 		Identifier     string `json:"identifier"`
 		Password       string `json:"password,omitempty"`
+		PortalVerificationTicket string `json:"portal_verification_ticket,omitempty"`
 		Payment        int64  `json:"payment"`
 		SubscribeId    int64  `json:"subscribe_id"`
 		Quantity       int64  `json:"quantity"`
@@ -51,6 +52,37 @@ type (
 		FeeAmount           int64  `json:"fee_amount"`
 		CanPurchase         bool   `json:"can_purchase"`
 		PurchaseBlockReason string `json:"purchase_block_reason,omitempty"`
+		AccountMode         string `json:"account_mode,omitempty"`
+		NextAction          string `json:"next_action,omitempty"`
+		VerificationType    string `json:"verification_type,omitempty"`
+		RequirePassword     bool   `json:"require_password"`
+	}
+	PortalSendCodeRequest {
+		AuthType       string `json:"auth_type"`
+		Identifier     string `json:"identifier"`
+		TurnstileToken string `json:"turnstile_token,omitempty"`
+	}
+	PortalSendCodeResponse {
+		Status           bool   `json:"status"`
+		AccountMode      string `json:"account_mode"`
+		VerificationType string `json:"verification_type"`
+		NextAction       string `json:"next_action"`
+		ResendAfter      int64  `json:"resend_after"`
+		ExpiresIn        int64  `json:"expires_in"`
+	}
+	PortalVerificationTicketRequest {
+		AuthType       string `json:"auth_type"`
+		Identifier     string `json:"identifier"`
+		Code           string `json:"code"`
+		TurnstileToken string `json:"turnstile_token,omitempty"`
+	}
+	PortalVerificationTicketResponse {
+		Verified                 bool   `json:"verified"`
+		AccountMode              string `json:"account_mode"`
+		VerificationType         string `json:"verification_type"`
+		PortalVerificationTicket string `json:"portal_verification_ticket"`
+		ExpiresAt                int64  `json:"expires_at"`
+		RequirePassword          bool   `json:"require_password"`
 	}
 	QueryPurchaseOrderRequest {
 		AuthType   string `form:"auth_type"`
@@ -94,6 +126,14 @@ service ppanel {
 	@doc "Pre Purchase Order"
 	@handler PrePurchaseOrder
 	post /pre (PrePurchaseOrderRequest) returns (PrePurchaseOrderResponse)
+
+	@doc "Portal Send Code"
+	@handler SendPortalCode
+	post /send_code (PortalSendCodeRequest) returns (PortalSendCodeResponse)
+
+	@doc "Portal Verification Ticket"
+	@handler CreatePortalVerificationTicket
+	post /verification/ticket (PortalVerificationTicketRequest) returns (PortalVerificationTicketResponse)
 
 	@doc "Purchase subscription"
 	@handler Purchase
