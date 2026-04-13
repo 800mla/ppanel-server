@@ -1388,14 +1388,24 @@ type LoginResponse struct {
 }
 
 type MessageLog struct {
-	Id        int64       `json:"id"`
-	Type      uint8       `json:"type"`
-	Platform  string      `json:"platform"`
-	To        string      `json:"to"`
-	Subject   string      `json:"subject"`
-	Content   interface{} `json:"content"`
-	Status    uint8       `json:"status"`
-	CreatedAt int64       `json:"created_at"`
+	Id                      int64       `json:"id"`
+	Type                    uint8       `json:"type"`
+	Source                  string      `json:"source,omitempty"`
+	TraceID                 string      `json:"trace_id,omitempty"`
+	Platform                string      `json:"platform"`
+	To                      string      `json:"to"`
+	Subject                 string      `json:"subject"`
+	Template                string      `json:"template,omitempty"`
+	Content                 interface{} `json:"content"`
+	Status                  uint8       `json:"status"`
+	RequestTime             int64       `json:"request_time,omitempty"`
+	ErrorMessage            string      `json:"error_message,omitempty"`
+	ProviderStatus          string      `json:"provider_status,omitempty"`
+	ProviderEventTime       int64       `json:"provider_event_time,omitempty"`
+	ProviderMessageID       string      `json:"provider_message_id,omitempty"`
+	ProviderResponseExcerpt string      `json:"provider_response_excerpt,omitempty"`
+	UpdatedAt               int64       `json:"updated_at,omitempty"`
+	CreatedAt               int64       `json:"created_at"`
 }
 
 type MigrateServerNodeResponse struct {

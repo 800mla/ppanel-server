@@ -34,11 +34,18 @@ func NewClient(conf *Config) *Client {
 	return &Client{conf: *conf, dailer: dailer}
 }
 
-func (m *Client) Send(to []string, subject, body string) error {
+func (m *Client) Send(to []string, subject, body string, headers map[string]string) (string, string, error) {
 	msg := gomail.NewMessage()
 	msg.SetAddressHeader("From", m.conf.From, m.conf.SiteName)
 	msg.SetHeader("To", to...)
 	msg.SetHeader("Subject", subject)
+	for key, value := range headers {
+		msg.SetHeader(key, value)
+	}
 	msg.SetBody("text/html", body)
-	return m.dailer.DialAndSend(msg)
+	err := m.dailer.DialAndSend(msg)
+	if err != nil {
+		return "", "", err
+	}
+	return "", "smtp DialAndSend returned success", nil
 }

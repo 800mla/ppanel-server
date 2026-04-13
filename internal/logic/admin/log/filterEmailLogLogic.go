@@ -50,14 +50,24 @@ func (l *FilterEmailLogLogic) FilterEmailLog(req *types.FilterLogParams) (resp *
 			continue
 		}
 		list = append(list, types.MessageLog{
-			Id:        datum.Id,
-			Type:      datum.Type,
-			Platform:  content.Platform,
-			To:        content.To,
-			Subject:   content.Subject,
-			Content:   content.Content,
-			Status:    content.Status,
-			CreatedAt: datum.CreatedAt.UnixMilli(),
+			Id:                      datum.Id,
+			Type:                    datum.Type,
+			Source:                  content.Source,
+			TraceID:                 content.TraceID,
+			Platform:                content.Platform,
+			To:                      content.To,
+			Subject:                 content.Subject,
+			Template:                content.Template,
+			Content:                 content.Content,
+			Status:                  content.Status,
+			RequestTime:             content.RequestTime,
+			ErrorMessage:            content.ErrorMessage,
+			ProviderStatus:          content.ProviderStatus,
+			ProviderEventTime:       content.ProviderEventTime,
+			ProviderMessageID:       content.ProviderMessageID,
+			ProviderResponseExcerpt: content.ProviderResponseExcerpt,
+			UpdatedAt:               content.UpdatedAt,
+			CreatedAt:               datum.CreatedAt.UnixMilli(),
 		})
 	}
 

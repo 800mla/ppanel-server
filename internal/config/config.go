@@ -89,6 +89,7 @@ type EmailConfig struct {
 	Enable                     bool   `yaml:"Enable" default:"true"`
 	Platform                   string `yaml:"platform"`
 	PlatformConfig             string `yaml:"platform_config"`
+	WebhookSecret              string `yaml:"webhook_secret"`
 	EnableVerify               bool   `yaml:"enable_verify"`
 	EnableNotify               bool   `yaml:"enable_notify"`
 	EnableDomainSuffix         bool   `yaml:"enable_domain_suffix"`

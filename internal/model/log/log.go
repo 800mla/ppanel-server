@@ -75,12 +75,21 @@ func (SystemLog) TableName() string {
 
 // Message represents a message log entry.
 type Message struct {
-	To       string                 `json:"to"`
-	Subject  string                 `json:"subject,omitempty"`
-	Content  map[string]interface{} `json:"content"`
-	Platform string                 `json:"platform"`
-	Template string                 `json:"template"`
-	Status   uint8                  `json:"status"` // 1: Sent, 2: Failed
+	Source                  string                 `json:"source,omitempty"`
+	TraceID                 string                 `json:"trace_id,omitempty"`
+	To                      string                 `json:"to"`
+	Subject                 string                 `json:"subject,omitempty"`
+	Content                 map[string]interface{} `json:"content"`
+	Platform                string                 `json:"platform"`
+	Template                string                 `json:"template"`
+	Status                  uint8                  `json:"status"` // 0: Pending, 1: Sent, 2: Failed
+	RequestTime             int64                  `json:"request_time,omitempty"`
+	ErrorMessage            string                 `json:"error_message,omitempty"`
+	ProviderStatus          string                 `json:"provider_status,omitempty"`
+	ProviderEventTime       int64                  `json:"provider_event_time,omitempty"`
+	ProviderMessageID       string                 `json:"provider_message_id,omitempty"`
+	ProviderResponseExcerpt string                 `json:"provider_response_excerpt,omitempty"`
+	UpdatedAt               int64                  `json:"updated_at,omitempty"`
 }
 
 // Marshal implements the json.Marshaler interface for Message.

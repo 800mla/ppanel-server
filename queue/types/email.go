@@ -19,5 +19,8 @@ type (
 		Email   string                 `json:"to"`
 		Subject string                 `json:"subject"`
 		Content map[string]interface{} `json:"content"`
+		Source  string                 `json:"source,omitempty"`
+		LogID   int64                  `json:"log_id,omitempty"`
+		TraceID string                 `json:"trace_id,omitempty"`
 	}
 )

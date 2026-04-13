@@ -35,14 +35,28 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		return nil
 	}
 	messageLog := log.Message{
-		Platform: l.svcCtx.Config.Email.Platform,
-		To:       payload.Email,
-		Subject:  payload.Subject,
-		Content:  payload.Content,
+		Source:                  payload.Source,
+		TraceID:                 payload.TraceID,
+		Platform:                l.svcCtx.Config.Email.Platform,
+		To:                      payload.Email,
+		Subject:                 payload.Subject,
+		Content:                 payload.Content,
+		Template:                payload.Type,
+		Status:                  0,
+		RequestTime:             time.Now().UnixMilli(),
+		ProviderStatus:          "sending",
+		ProviderResponseExcerpt: "worker started email send",
+		UpdatedAt:               time.Now().UnixMilli(),
+	}
+	systemLogEntry, err := l.ensureSystemLogEntry(ctx, payload.LogID, &messageLog)
+	if err != nil {
+		logger.WithContext(ctx).Error("[SendEmailLogic] ensure system log entry failed", logger.Field("error", err.Error()))
+		return nil
 	}
 	sender, err := email.NewSender(l.svcCtx.Config.Email.Platform, l.svcCtx.Config.Email.PlatformConfig, l.svcCtx.Config.Site.SiteName)
 	if err != nil {
 		logger.WithContext(ctx).Error("[SendEmailLogic] NewSender failed", logger.Field("error", err.Error()))
+		l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "sender_init_failed", err.Error(), "email sender initialization failed", "", 0)
 		return nil
 	}
 	var content string
@@ -59,6 +73,7 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 				logger.Field("error", err.Error()),
 				logger.Field("data", payload.Content),
 			)
+			l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "template_failed", err.Error(), "verify email template render failed", "", 0)
 			return nil
 		}
 		content = result.String()
@@ -72,6 +87,7 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 				logger.Field("template", l.svcCtx.Config.Email.MaintenanceEmailTemplate),
 				logger.Field("data", payload.Content),
 			)
+			l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "template_failed", err.Error(), "maintenance email template render failed", "", 0)
 			return nil
 		}
 		content = result.String()
@@ -85,6 +101,7 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 				logger.Field("template", l.svcCtx.Config.Email.ExpirationEmailTemplate),
 				logger.Field("data", payload.Content),
 			)
+			l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "template_failed", err.Error(), "expiration email template render failed", "", 0)
 			return nil
 		}
 		content = result.String()
@@ -98,6 +115,7 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 				logger.Field("template", l.svcCtx.Config.Email.TrafficExceedEmailTemplate),
 				logger.Field("data", payload.Content),
 			)
+			l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "template_failed", err.Error(), "traffic exceed email template render failed", "", 0)
 			return nil
 		}
 		content = result.String()
@@ -106,12 +124,14 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 			logger.WithContext(ctx).Error("[SendEmailLogic] Custom email content is empty",
 				logger.Field("payload", payload),
 			)
+			l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "template_failed", "custom email content is empty", "custom email content is empty", "", 0)
 			return nil
 		}
 		if tpl, ok := payload.Content["content"].(string); !ok {
 			logger.WithContext(ctx).Error("[SendEmailLogic] Custom email content is not a string",
 				logger.Field("payload", payload),
 			)
+			l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "template_failed", "custom email content is not a string", "custom email content is not a string", "", 0)
 			return nil
 		} else {
 			content = tpl
@@ -121,35 +141,76 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 			logger.Field("type", payload.Type),
 			logger.Field("payload", payload),
 		)
+		l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "unsupported_type", "unsupported email type", "unsupported email type", "", 0)
 		return nil
 	}
 
-	err = sender.Send([]string{payload.Email}, payload.Subject, content)
+	providerMessageID, providerExcerpt, err := sender.Send([]string{payload.Email}, payload.Subject, content, map[string]string{
+		"X-Bingka-Mail-Trace-ID":  payload.TraceID,
+		"Resend-Idempotency-Key": payload.TraceID,
+	})
 	if err != nil {
 		logger.WithContext(ctx).Error("[SendEmailLogic] Send email failed", logger.Field("error", err.Error()))
+		l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 2, "smtp_failed", err.Error(), "sender.Send returned error", "", 0)
 		return nil
 	}
-	messageLog.Status = 1
-	emailLog, err := messageLog.Marshal()
-	if err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] Marshal message log failed",
-			logger.Field("error", err.Error()),
-			logger.Field("messageLog", messageLog),
-		)
-		return nil
+	if providerExcerpt == "" {
+		providerExcerpt = "sender.Send returned success"
+	}
+	l.updateSystemLogStatus(ctx, systemLogEntry, &messageLog, 1, "smtp_accepted", "", providerExcerpt, providerMessageID, 0)
+	return nil
+}
+
+func (l *SendEmailLogic) ensureSystemLogEntry(ctx context.Context, logID int64, messageLog *log.Message) (*log.SystemLog, error) {
+	if logID != 0 {
+		existing, err := l.svcCtx.LogModel.FindOne(ctx, logID)
+		if err == nil {
+			return existing, nil
+		}
 	}
 
-	if err = l.svcCtx.LogModel.Insert(ctx, &log.SystemLog{
+	content, err := messageLog.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	entry := &log.SystemLog{
 		Type:     log.TypeEmailMessage.Uint8(),
 		Date:     time.Now().Format("2006-01-02"),
 		ObjectID: 0,
-		Content:  string(emailLog),
-	}); err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] Insert email log failed",
-			logger.Field("error", err.Error()),
-			logger.Field("emailLog", string(emailLog)),
-		)
-		return nil
+		Content:  string(content),
 	}
-	return nil
+	if err = l.svcCtx.LogModel.Insert(ctx, entry); err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
+func (l *SendEmailLogic) updateSystemLogStatus(ctx context.Context, entry *log.SystemLog, messageLog *log.Message, status uint8, providerStatus, errorMessage, excerpt, providerMessageID string, providerEventTime int64) {
+	if entry == nil || messageLog == nil {
+		return
+	}
+	messageLog.Status = status
+	messageLog.ProviderStatus = providerStatus
+	messageLog.ErrorMessage = errorMessage
+	messageLog.ProviderMessageID = providerMessageID
+	messageLog.ProviderResponseExcerpt = excerpt
+	if providerEventTime != 0 {
+		messageLog.ProviderEventTime = providerEventTime
+	}
+	messageLog.UpdatedAt = time.Now().UnixMilli()
+
+	content, err := messageLog.Marshal()
+	if err != nil {
+		logger.WithContext(ctx).Error("[SendEmailLogic] Marshal message log failed",
+			logger.Field("error", err.Error()),
+		)
+		return
+	}
+	entry.Content = string(content)
+	if err = l.svcCtx.LogModel.Update(ctx, entry); err != nil {
+		logger.WithContext(ctx).Error("[SendEmailLogic] Update email log failed",
+			logger.Field("error", err.Error()),
+			logger.Field("log_id", entry.Id),
+		)
+	}
 }

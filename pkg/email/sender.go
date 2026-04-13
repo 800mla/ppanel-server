@@ -9,7 +9,7 @@ import (
 )
 
 type Sender interface {
-	Send(to []string, subject, body string) error
+	Send(to []string, subject, body string, headers map[string]string) (providerMessageID string, providerResponseExcerpt string, err error)
 }
 
 func NewSender(platform, config, siteName string) (Sender, error) {

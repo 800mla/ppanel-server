@@ -8,9 +8,11 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/config"
+	systemLog "github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/random"
+	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
 
@@ -114,12 +116,57 @@ func (l *SendEmailCodeLogic) SendEmailCode(req *types.SendCodeRequest) (resp *ty
 		l.Errorw("[SendEmailCode]: Marshal Error", logger.Field("error", err.Error()))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to marshal task payload")
 	}
+
+	traceID := "mail_" + uuidx.NewUUID().String()
+
+	messageLog := &systemLog.Message{
+		Source:                  "send_code",
+		TraceID:                 traceID,
+		To:                      req.Email,
+		Subject:                 taskPayload.Subject,
+		Content:                 taskPayload.Content,
+		Platform:                l.svcCtx.Config.Email.Platform,
+		Template:                taskPayload.Type,
+		Status:                  0,
+		RequestTime:             time.Now().UnixMilli(),
+		ProviderStatus:          "queued",
+		ProviderResponseExcerpt: "queued for async email sending",
+		UpdatedAt:               time.Now().UnixMilli(),
+	}
+	messageContent, _ := messageLog.Marshal()
+	systemLogEntry := &systemLog.SystemLog{
+		Type:     systemLog.TypeEmailMessage.Uint8(),
+		Date:     time.Now().Format("2006-01-02"),
+		ObjectID: 0,
+		Content:  string(messageContent),
+	}
+	if err = l.svcCtx.LogModel.Insert(l.ctx, systemLogEntry); err != nil {
+		l.Errorw("[SendEmailCode]: Insert pending email log failed", logger.Field("error", err.Error()))
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to insert pending email log")
+	}
+	taskPayload.Source = "send_code"
+	taskPayload.LogID = systemLogEntry.Id
+	taskPayload.TraceID = traceID
+	payloadBuy, err = json.Marshal(taskPayload)
+	if err != nil {
+		l.Errorw("[SendEmailCode]: Marshal Error", logger.Field("error", err.Error()))
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to marshal task payload")
+	}
 	// Create a queue task
 	task := asynq.NewTask(queue.ForthwithSendEmail, payloadBuy, asynq.MaxRetry(3))
 	// Enqueue the task
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task)
 	if err != nil {
 		l.Errorw("[SendEmailCode]: Enqueue Error", logger.Field("error", err.Error()), logger.Field("payload", string(payloadBuy)))
+		messageLog.Status = 2
+		messageLog.ErrorMessage = err.Error()
+		messageLog.ProviderStatus = "queue_failed"
+		messageLog.ProviderResponseExcerpt = "failed to enqueue async email task"
+		messageLog.UpdatedAt = time.Now().UnixMilli()
+		if content, marshalErr := messageLog.Marshal(); marshalErr == nil {
+			systemLogEntry.Content = string(content)
+			_ = l.svcCtx.LogModel.Update(l.ctx, systemLogEntry)
+		}
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to enqueue task")
 	}
 	l.Infow("[SendEmailCode]: Enqueue Success", logger.Field("taskID", taskInfo.ID), logger.Field("payload", string(payloadBuy)))

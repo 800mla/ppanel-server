@@ -28,6 +28,7 @@ import (
 	authAdmin "github.com/perfect-panel/server/internal/handler/auth/admin"
 	authOauth "github.com/perfect-panel/server/internal/handler/auth/oauth"
 	common "github.com/perfect-panel/server/internal/handler/common"
+	webhookHandler "github.com/perfect-panel/server/internal/handler/webhook"
 	publicAnnouncement "github.com/perfect-panel/server/internal/handler/public/announcement"
 	publicDocument "github.com/perfect-panel/server/internal/handler/public/document"
 	publicOrder "github.com/perfect-panel/server/internal/handler/public/order"
@@ -734,6 +735,9 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		// OAuth login get token
 		authOauthGroupRouter.POST("/login/token", authOauth.OAuthLoginGetTokenHandler(serverCtx))
 	}
+
+	// Resend Email Webhook
+	router.POST("/v1/webhook/email/resend", webhookHandler.ResendEmailWebhookHandler(serverCtx))
 
 	commonGroupRouter := router.Group("/v1/common")
 	commonGroupRouter.Use(middleware.DeviceMiddleware(serverCtx))

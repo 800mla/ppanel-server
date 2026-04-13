@@ -141,7 +141,7 @@ func (w *Worker) Start() {
 			taskInfo.Status = 1 // 1 表示任务进行中
 		}
 
-		if err := w.sender.Send([]string{recipient}, content.Subject, content.Content); err != nil {
+		if _, _, err := w.sender.Send([]string{recipient}, content.Subject, content.Content, nil); err != nil {
 			logger.Error("Batch Send Email",
 				logger.Field("message", "Failed to send email"),
 				logger.Field("error", err.Error()),

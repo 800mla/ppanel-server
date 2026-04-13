@@ -115,6 +115,7 @@ func (l *TelegramAuthConfig) Unmarshal(data string) error {
 type EmailAuthConfig struct {
 	Platform                   string      `json:"platform"`
 	PlatformConfig             interface{} `json:"platform_config"`
+	WebhookSecret              string      `json:"webhook_secret"`
 	EnableVerify               bool        `json:"enable_verify"`
 	EnableNotify               bool        `json:"enable_notify"`
 	EnableDomainSuffix         bool        `json:"enable_domain_suffix"`
@@ -143,6 +144,7 @@ func (l *EmailAuthConfig) Marshal() string {
 		config := &EmailAuthConfig{
 			Platform:                   "smtp",
 			PlatformConfig:             new(SMTPConfig),
+			WebhookSecret:              "",
 			EnableVerify:               true,
 			EnableNotify:               true,
 			EnableDomainSuffix:         false,
@@ -164,6 +166,7 @@ func (l *EmailAuthConfig) Unmarshal(data string) {
 		config := &EmailAuthConfig{
 			Platform:                   "smtp",
 			PlatformConfig:             new(SMTPConfig),
+			WebhookSecret:              "",
 			EnableVerify:               true,
 			EnableNotify:               true,
 			EnableDomainSuffix:         false,
